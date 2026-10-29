@@ -244,6 +244,79 @@ slint::slint! {
         }
     }
 
+    component MenuBarButton inherits Rectangle {
+        in property <string> label;
+        in property <bool> active: false;
+        callback clicked();
+        callback hovered();
+
+        height: 24px;
+        border-radius: 4px;
+        background: root.active ? Theme.nav-selected : (ta.has-hover ? #18212c : transparent);
+
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            alignment: center;
+            Text {
+                text: root.label;
+                color: root.active ? #ffffff : Theme.text-main;
+                font-size: Theme.font-size-base;
+                vertical-alignment: center;
+            }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+            moved => {
+                if (ta.has-hover) {
+                    root.hovered();
+                }
+            }
+        }
+    }
+
+    component MenuDropdownItem inherits Rectangle {
+        in property <string> label;
+        in property <string> shortcut: "";
+        callback triggered();
+
+        height: 28px;
+        border-radius: 4px;
+        background: ta.has-hover ? Theme.nav-selected : transparent;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 16px;
+            alignment: space-between;
+            Text {
+                text: root.label;
+                color: ta.has-hover ? #ffffff : Theme.text-main;
+                font-size: Theme.font-size-base;
+                vertical-alignment: center;
+            }
+            if root.shortcut != "" : Text {
+                text: root.shortcut;
+                color: Theme.text-dim;
+                font-size: Theme.font-size-sm;
+                vertical-alignment: center;
+            }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.triggered(); }
+        }
+    }
+
+    component MenuDivider inherits Rectangle {
+        height: 9px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle { height: 1px; background: Theme.border; }
+        }
+    }
+
     export component MainWindow inherits Window {
         title: "PulseDeck";
         preferred-width: 1480px;
@@ -262,6 +335,8 @@ slint::slint! {
         in-out property <string> page-title: "Summary";
         in-out property <int> perf-selected-idx: 0; // 0=CPU, 1=Memory, 2=Disk, 3=Network, 4=GPU, 5=Energy, 6=Thermals
         in-out property <bool> perf-cpu-expanded: true;
+        in-out property <int> open-menu: 0; // 0=none, 1=File, 2=Edit, 3=View, 4=Performance, 5=Help
+        in-out property <bool> show-sidebar: true;
 
         // Bottom status bar properties
         in-out property <string> status-left-text: "Native providers healthy · 0 processes";
@@ -442,23 +517,52 @@ slint::slint! {
         callback toggle-graph-grid();
         callback save-settings();
         callback reset-settings();
+        callback quit-app();
+        callback toggle-flight-recording(bool);
 
         VerticalLayout {
             // 1. Top Menu Strip ("File  Edit  View  Performance  Help")
             Rectangle {
-                height: 26px;
+                height: 28px;
                 background: #0d1015;
                 border-width: 1px;
                 border-color: #171d26;
                 HorizontalLayout {
-                    padding-left: 10px;
-                    spacing: 16px;
+                    padding-left: 6px;
+                    padding-top: 2px;
+                    padding-bottom: 2px;
+                    spacing: 4px;
                     alignment: start;
-                    Text { text: "File"; color: Theme.text-main; font-size: Theme.font-size-base; vertical-alignment: center; }
-                    Text { text: "Edit"; color: Theme.text-main; font-size: Theme.font-size-base; vertical-alignment: center; }
-                    Text { text: "View"; color: Theme.text-main; font-size: Theme.font-size-base; vertical-alignment: center; }
-                    Text { text: "Performance"; color: Theme.text-main; font-size: Theme.font-size-base; vertical-alignment: center; }
-                    Text { text: "Help"; color: Theme.text-main; font-size: Theme.font-size-base; vertical-alignment: center; }
+                    MenuBarButton {
+                        label: "File";
+                        active: root.open-menu == 1;
+                        clicked => { root.open-menu = root.open-menu == 1 ? 0 : 1; }
+                        hovered => { if (root.open-menu != 0) { root.open-menu = 1; } }
+                    }
+                    MenuBarButton {
+                        label: "Edit";
+                        active: root.open-menu == 2;
+                        clicked => { root.open-menu = root.open-menu == 2 ? 0 : 2; }
+                        hovered => { if (root.open-menu != 0) { root.open-menu = 2; } }
+                    }
+                    MenuBarButton {
+                        label: "View";
+                        active: root.open-menu == 3;
+                        clicked => { root.open-menu = root.open-menu == 3 ? 0 : 3; }
+                        hovered => { if (root.open-menu != 0) { root.open-menu = 3; } }
+                    }
+                    MenuBarButton {
+                        label: "Performance";
+                        active: root.open-menu == 4;
+                        clicked => { root.open-menu = root.open-menu == 4 ? 0 : 4; }
+                        hovered => { if (root.open-menu != 0) { root.open-menu = 4; } }
+                    }
+                    MenuBarButton {
+                        label: "Help";
+                        active: root.open-menu == 5;
+                        clicked => { root.open-menu = root.open-menu == 5 ? 0 : 5; }
+                        hovered => { if (root.open-menu != 0) { root.open-menu = 5; } }
+                    }
                 }
             }
 
@@ -467,7 +571,7 @@ slint::slint! {
                 vertical-stretch: 1;
 
                 // Left Navigation Sidebar
-                Rectangle {
+                if root.show-sidebar : Rectangle {
                     width: 196px;
                     background: Theme.bg-panel;
                     border-width: 1px;
@@ -556,13 +660,24 @@ slint::slint! {
                         height: 34px;
                         alignment: space-between;
                         HorizontalLayout {
-                            spacing: 12px;
+                            spacing: 10px;
                             alignment: start;
-                            Text {
-                                text: "≡";
-                                color: Theme.text-dim;
-                                font-size: 20px;
-                                vertical-alignment: center;
+                            Rectangle {
+                                width: 28px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: ham-ta.has-hover ? #18212c : transparent;
+                                Text {
+                                    text: "≡";
+                                    color: Theme.text-dim;
+                                    font-size: 20px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                ham-ta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.show-sidebar = !root.show-sidebar; }
+                                }
                             }
                             Text {
                                 text: root.page-title;
@@ -2056,6 +2171,7 @@ slint::slint! {
                             border-width: 1px;
                             border-color: #262f3d;
                             Text { text: "■"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.toggle-flight-recording(false); } }
                         }
                         Rectangle {
                             width: 24px;
@@ -2065,7 +2181,7 @@ slint::slint! {
                             border-width: 1px;
                             border-color: #262f3d;
                             Text { text: "●"; color: #e03e3e; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
-                            TouchArea { mouse-cursor: pointer; clicked => { root.export-flight-trace(); } }
+                            TouchArea { mouse-cursor: pointer; clicked => { root.toggle-flight-recording(true); } }
                         }
                         Rectangle {
                             width: 86px;
@@ -2076,13 +2192,302 @@ slint::slint! {
                             border-radius: 3px;
                             Text {
                                 text: root.status-timer-text;
-                                color: #5c6b7a;
+                                color: #36e8ff;
                                 font-family: Theme.font-family;
                                 font-size: 11px;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Top Menu Dropdown Overlay & Click-Away Backdrop
+        if root.open-menu != 0 : TouchArea {
+            x: 0px;
+            y: 28px;
+            width: root.width;
+            height: root.height - 28px;
+            clicked => { root.open-menu = 0; }
+        }
+
+        // 1. FILE MENU DROPDOWN
+        if root.open-menu == 1 : Rectangle {
+            x: 6px;
+            y: 28px;
+            width: 260px;
+            background: #10151d;
+            border-width: 1px;
+            border-color: Theme.nav-border;
+            border-radius: 6px;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #000000aa;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                MenuDropdownItem {
+                    label: "↻  Refresh Telemetry Now";
+                    shortcut: "F5";
+                    triggered => { root.open-menu = 0; root.refresh-now(); }
+                }
+                MenuDropdownItem {
+                    label: "🧭  Export Flight Trace (.pulsetrace)";
+                    shortcut: "Ctrl+E";
+                    triggered => { root.open-menu = 0; root.export-flight-trace(); }
+                }
+                MenuDropdownItem {
+                    label: "ⓘ  Export System Info Report (.txt)";
+                    shortcut: "Ctrl+I";
+                    triggered => { root.open-menu = 0; root.export-sysinfo(); }
+                }
+                MenuDropdownItem {
+                    label: "💾  Save Settings & Theme";
+                    shortcut: "Ctrl+S";
+                    triggered => { root.open-menu = 0; root.save-settings(); }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    label: "⏻  Exit PulseDeck";
+                    shortcut: "Ctrl+Q";
+                    triggered => { root.open-menu = 0; root.quit-app(); }
+                }
+            }
+        }
+
+        // 2. EDIT MENU DROPDOWN
+        if root.open-menu == 2 : Rectangle {
+            x: 50px;
+            y: 28px;
+            width: 260px;
+            background: #10151d;
+            border-width: 1px;
+            border-color: Theme.nav-border;
+            border-radius: 6px;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #000000aa;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                MenuDropdownItem {
+                    label: "🔍  Filter Processes...";
+                    triggered => { root.open-menu = 0; root.select-tab(2, "Processes"); }
+                }
+                MenuDropdownItem {
+                    label: "🌐  Filter Network Connections...";
+                    triggered => { root.open-menu = 0; root.select-tab(9, "Connections"); }
+                }
+                MenuDropdownItem {
+                    label: "⚙  Filter Kernel Drivers...";
+                    triggered => { root.open-menu = 0; root.select-tab(11, "Drivers"); }
+                }
+                MenuDropdownItem {
+                    label: "🧹  Clear All Active Search Filters";
+                    triggered => {
+                        root.open-menu = 0;
+                        root.proc-filter = "";
+                        root.conn-filter = "";
+                        root.drv-filter = "";
+                        root.catalog-filter = "";
+                        root.refresh-filters();
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    label: "⚙  Settings & Preferences...";
+                    triggered => { root.open-menu = 0; root.select-tab(14, "Settings"); }
+                }
+                MenuDropdownItem {
+                    label: "🖌  Colors & Theme Studio...";
+                    triggered => { root.open-menu = 0; root.select-tab(15, "Colors & Theme"); }
+                }
+            }
+        }
+
+        // 3. VIEW MENU DROPDOWN
+        if root.open-menu == 3 : Rectangle {
+            x: 96px;
+            y: 28px;
+            width: 270px;
+            background: #10151d;
+            border-width: 1px;
+            border-color: Theme.nav-border;
+            border-radius: 6px;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #000000aa;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                MenuDropdownItem {
+                    label: "⌂  Summary Dashboard";
+                    triggered => { root.open-menu = 0; root.select-tab(0, "Summary"); }
+                }
+                MenuDropdownItem {
+                    label: "📈  Performance Observatory";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); }
+                }
+                MenuDropdownItem {
+                    label: "📊  Processes (Toggle Tree/List)";
+                    triggered => {
+                        root.open-menu = 0;
+                        root.proc-tree-view = !root.proc-tree-view;
+                        root.select-tab(2, "Processes");
+                    }
+                }
+                MenuDropdownItem {
+                    label: "⚡  Power & Frequency Sensors";
+                    triggered => { root.open-menu = 0; root.select-tab(7, "Power & Freq"); }
+                }
+                MenuDropdownItem {
+                    label: "🖴  Disk Space Analyzer";
+                    triggered => { root.open-menu = 0; root.select-tab(12, "Disk Space"); }
+                }
+                MenuDropdownItem {
+                    label: "⏱  Hardware Benchmarks";
+                    triggered => { root.open-menu = 0; root.select-tab(13, "Benchmarks"); }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    label: root.show-sidebar ? "◧  Hide Navigation Sidebar" : "◧  Show Navigation Sidebar";
+                    triggered => { root.open-menu = 0; root.show-sidebar = !root.show-sidebar; }
+                }
+                MenuDropdownItem {
+                    label: root.custom-show-grid ? "▦  Graph Gridlines: ON" : "▦  Graph Gridlines: OFF";
+                    triggered => { root.open-menu = 0; root.toggle-graph-grid(); }
+                }
+                MenuDropdownItem {
+                    label: root.custom-compact-rows ? "↕  Table Density: Compact" : "↕  Table Density: Standard";
+                    triggered => { root.open-menu = 0; root.toggle-compact-rows(); }
+                }
+                MenuDropdownItem {
+                    label: "A+  Increase Font Size";
+                    triggered => { root.open-menu = 0; root.adjust-font-size(1); }
+                }
+                MenuDropdownItem {
+                    label: "A-  Decrease Font Size";
+                    triggered => { root.open-menu = 0; root.adjust-font-size(-1); }
+                }
+            }
+        }
+
+        // 4. PERFORMANCE MENU DROPDOWN
+        if root.open-menu == 4 : Rectangle {
+            x: 146px;
+            y: 28px;
+            width: 280px;
+            background: #10151d;
+            border-width: 1px;
+            border-color: Theme.nav-border;
+            border-radius: 6px;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #000000aa;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                MenuDropdownItem {
+                    label: "⚙  CPU Utilization & Topology";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(0); }
+                }
+                MenuDropdownItem {
+                    label: root.perf-cpu-expanded ? "⊞  CPU View: Switch to Overall Graph" : "⊞  CPU View: Switch to Per-Core Grid";
+                    triggered => {
+                        root.open-menu = 0;
+                        root.perf-cpu-expanded = !root.perf-cpu-expanded;
+                        root.select-tab(1, "Performance");
+                        root.select-perf-item(0);
+                    }
+                }
+                MenuDropdownItem {
+                    label: "▦  Memory & Swap";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(1); }
+                }
+                MenuDropdownItem {
+                    label: "🖴  Physical Disks";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(2); }
+                }
+                MenuDropdownItem {
+                    label: "🌐  Network Adapters";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(3); }
+                }
+                MenuDropdownItem {
+                    label: "🖥  GPU Device";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(4); }
+                }
+                MenuDropdownItem {
+                    label: "⚡  Whole Machine Energy";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(5); }
+                }
+                MenuDropdownItem {
+                    label: "🌡  Whole Machine Thermals";
+                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(6); }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    label: "⏱  Update Speed: Fast (250 ms)";
+                    shortcut: root.custom-refresh-ms == 250 ? "✓" : "";
+                    triggered => { root.open-menu = 0; root.set-refresh-rate(250); }
+                }
+                MenuDropdownItem {
+                    label: "⏱  Update Speed: High (500 ms)";
+                    shortcut: root.custom-refresh-ms == 500 ? "✓" : "";
+                    triggered => { root.open-menu = 0; root.set-refresh-rate(500); }
+                }
+                MenuDropdownItem {
+                    label: "⏱  Update Speed: Normal (1000 ms)";
+                    shortcut: root.custom-refresh-ms == 1000 ? "✓" : "";
+                    triggered => { root.open-menu = 0; root.set-refresh-rate(1000); }
+                }
+                MenuDropdownItem {
+                    label: "⏱  Update Speed: Low (2000 ms)";
+                    shortcut: root.custom-refresh-ms == 2000 ? "✓" : "";
+                    triggered => { root.open-menu = 0; root.set-refresh-rate(2000); }
+                }
+            }
+        }
+
+        // 5. HELP MENU DROPDOWN
+        if root.open-menu == 5 : Rectangle {
+            x: 242px;
+            y: 28px;
+            width: 260px;
+            background: #10151d;
+            border-width: 1px;
+            border-color: Theme.nav-border;
+            border-radius: 6px;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #000000aa;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                MenuDropdownItem {
+                    label: "ⓘ  System Diagnostic Report";
+                    triggered => { root.open-menu = 0; root.select-tab(3, "System Info"); }
+                }
+                MenuDropdownItem {
+                    label: "🧭  Flight Recorder Timeline";
+                    triggered => { root.open-menu = 0; root.select-tab(8, "Flight Recorder"); }
+                }
+                MenuDropdownItem {
+                    label: "⏱  Run Hardware Benchmarks";
+                    triggered => { root.open-menu = 0; root.select-tab(13, "Benchmarks"); root.run-benchmarks(); }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    label: "↺  Reset Theme & Settings";
+                    triggered => { root.open-menu = 0; root.reset-settings(); }
+                }
+                MenuDropdownItem {
+                    label: "★  About PulseDeck v1.1.0";
+                    triggered => {
+                        root.open-menu = 0;
+                        root.status-message = "PulseDeck v1.1.0 — Native Slint Hardware Telemetry & System Observatory";
+                        root.select-tab(3, "System Info");
                     }
                 }
             }
@@ -2724,6 +3129,33 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         });
     }
 
+    win.on_quit_app(move || {
+        let _ = slint::quit_event_loop();
+    });
+
+    {
+        let win_weak = win.as_weak();
+        let ctrl_c = Rc::clone(&ctrl);
+        win.on_toggle_flight_recording(move |rec| {
+            if let Some(w) = win_weak.upgrade() {
+                let mut c = ctrl_c.borrow_mut();
+                c.sampler.flight_recorder.recording = rec;
+                if rec {
+                    w.set_status_message(SharedString::from("Flight Recorder active"));
+                } else {
+                    let json = serialize_flight_trace_json(c.sampler.export_flight_trace());
+                    let path = "pulsedeck-capture.pulsetrace";
+                    let _ = fs::write(path, &json);
+                    w.set_status_message(SharedString::from(format!(
+                        "Recording paused & saved ({} frames) to {}",
+                        c.sampler.flight_recorder.trace.samples.len(),
+                        path
+                    )));
+                }
+            }
+        });
+    }
+
     win.run().map_err(|e| anyhow::anyhow!("Slint event loop error: {}", e))
 }
 
@@ -2734,6 +3166,16 @@ fn sync_all_models(w: &MainWindow, c: &GuiController) {
     w.set_status_left_text(SharedString::from(format!(
         "Native providers healthy · {} processes",
         snap.processes.len()
+    )));
+    let rec_frames = c.sampler.flight_recorder.trace.samples.len() as u64;
+    let rec_secs = (rec_frames * c.settings.refresh_ms) / 1000;
+    let rec_cs = ((rec_frames * c.settings.refresh_ms) % 1000) / 10;
+    w.set_status_timer_text(SharedString::from(format!(
+        "{:02}:{:02}:{:02}.{:02}",
+        rec_secs / 3600,
+        (rec_secs % 3600) / 60,
+        rec_secs % 60,
+        rec_cs
     )));
     let primary_ip = snap
         .networks
