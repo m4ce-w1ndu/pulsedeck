@@ -1,0 +1,5 @@
+/target
+/*.pulsetrace
+/*.tmogtrace
+/pulsedeck-system-info.txt
+/pulsedeck-settings.json
