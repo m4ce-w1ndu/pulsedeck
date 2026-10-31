@@ -28,7 +28,9 @@ pub struct AppSettings {
     pub hide_kernel_threads: bool,
 }
 
-pub const THEME_PRESETS: [&str; 6] = [
+pub const THEME_PRESETS: [&str; 8] = [
+    "Fluent Modern",
+    "KDE Breeze",
     "VFD Phosphor Green",
     "Amber CRT",
     "Cyberpunk Cyan",
@@ -37,14 +39,16 @@ pub const THEME_PRESETS: [&str; 6] = [
     "Crimson Ops",
 ];
 
-pub const FONT_PRESETS: [&str; 7] = [
+pub const FONT_PRESETS: [&str; 9] = [
+    "Sans-Serif",
+    "Noto Sans",
+    "Segoe UI",
     "DejaVu Sans Mono",
     "JetBrains Mono",
     "Fira Code",
     "Ubuntu Mono",
     "Liberation Mono",
     "Consolas",
-    "Sans-Serif",
 ];
 
 impl Default for AppSettings {
@@ -64,6 +68,32 @@ impl Default for AppSettings {
 impl ThemeColors {
     pub fn from_preset(name: &str) -> Self {
         match name {
+            "Fluent Modern" | "Fluent" | "fluent" => Self {
+                preset_name: String::from("Fluent Modern"),
+                bg_main: [32, 32, 32],
+                bg_panel: [40, 40, 40],
+                bg_card: [45, 45, 45],
+                border: [60, 60, 60],
+                accent_primary: [96, 205, 255],
+                accent_secondary: [112, 165, 253],
+                accent_warn: [252, 225, 0],
+                accent_danger: [255, 153, 164],
+                text_main: [255, 255, 255],
+                text_dim: [160, 160, 160],
+            },
+            "KDE Breeze" | "KDE" | "kde" => Self {
+                preset_name: String::from("KDE Breeze"),
+                bg_main: [35, 38, 41],
+                bg_panel: [27, 30, 32],
+                bg_card: [42, 46, 50],
+                border: [56, 61, 66],
+                accent_primary: [61, 174, 233],
+                accent_secondary: [29, 211, 192],
+                accent_warn: [253, 188, 75],
+                accent_danger: [237, 21, 21],
+                text_main: [252, 252, 252],
+                text_dim: [158, 166, 173],
+            },
             "Amber CRT" => Self {
                 preset_name: String::from("Amber CRT"),
                 bg_main: [13, 9, 5],

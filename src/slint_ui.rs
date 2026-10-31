@@ -111,7 +111,11 @@ slint::slint! {
         in-out property <color> row-alt: #0f141a;
         in-out property <color> nav-selected: #132c47;
         in-out property <color> nav-border: #1e5785;
+        in-out property <color> menu-bg: #10151d;
+        in-out property <color> menu-border: #1e2631;
+        in-out property <color> menu-hover: #19222d;
         in-out property <string> font-family: "DejaVu Sans Mono";
+        in-out property <string> font-ui: "sans-serif";
         in-out property <length> font-size-sm: 11px;
         in-out property <length> font-size-base: 12px;
         in-out property <length> font-size-md: 14px;
@@ -252,16 +256,20 @@ slint::slint! {
 
         height: 24px;
         border-radius: 4px;
-        background: root.active ? Theme.nav-selected : (ta.has-hover ? #18212c : transparent);
+        background: root.active ? Theme.nav-selected : (ta.has-hover ? Theme.menu-hover : transparent);
+        border-width: root.active ? 1px : 0px;
+        border-color: Theme.nav-border;
 
         HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
+            padding-left: 9px;
+            padding-right: 9px;
             alignment: center;
             Text {
                 text: root.label;
                 color: root.active ? #ffffff : Theme.text-main;
+                font-family: Theme.font-ui;
                 font-size: Theme.font-size-base;
+                font-weight: root.active ? 600 : 400;
                 vertical-alignment: center;
             }
         }
@@ -276,30 +284,70 @@ slint::slint! {
         }
     }
 
+    component MenuDropdownContainer inherits Rectangle {
+        in property <length> menu-width: 280px;
+        width: root.menu-width;
+        height: vl.preferred-height;
+        background: Theme.menu-bg;
+        border-width: 1px;
+        border-color: Theme.menu-border;
+        border-radius: 8px;
+        drop-shadow-blur: 16px;
+        drop-shadow-color: #000000aa;
+        drop-shadow-offset-y: 5px;
+
+        vl := VerticalLayout {
+            padding: 5px;
+            spacing: 2px;
+            @children
+        }
+    }
+
     component MenuDropdownItem inherits Rectangle {
+        in property <string> icon: "";
         in property <string> label;
         in property <string> shortcut: "";
         callback triggered();
 
-        height: 28px;
-        border-radius: 4px;
-        background: ta.has-hover ? Theme.nav-selected : transparent;
+        height: 29px;
+        border-radius: 5px;
+        background: ta.has-hover ? Theme.menu-hover : transparent;
+        border-width: ta.has-hover ? 1px : 0px;
+        border-color: Theme.nav-border;
 
         HorizontalLayout {
-            padding-left: 10px;
-            padding-right: 10px;
-            spacing: 16px;
+            padding-left: 7px;
+            padding-right: 9px;
             alignment: space-between;
-            Text {
-                text: root.label;
-                color: ta.has-hover ? #ffffff : Theme.text-main;
-                font-size: Theme.font-size-base;
-                vertical-alignment: center;
+
+            HorizontalLayout {
+                spacing: 7px;
+                alignment: start;
+                Rectangle {
+                    width: 18px;
+                    height: 18px;
+                    if root.icon != "" : Text {
+                        text: root.icon;
+                        color: ta.has-hover ? Theme.accent-primary : Theme.accent-secondary;
+                        font-size: 13px;
+                        font-family: Theme.font-ui;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                Text {
+                    text: root.label;
+                    color: ta.has-hover ? #ffffff : Theme.text-main;
+                    font-size: Theme.font-size-base;
+                    font-family: Theme.font-ui;
+                    vertical-alignment: center;
+                }
             }
             if root.shortcut != "" : Text {
                 text: root.shortcut;
-                color: Theme.text-dim;
+                color: ta.has-hover ? Theme.accent-primary : Theme.text-dim;
                 font-size: Theme.font-size-sm;
+                font-family: Theme.font-ui;
                 vertical-alignment: center;
             }
         }
@@ -310,10 +358,14 @@ slint::slint! {
     }
 
     component MenuDivider inherits Rectangle {
-        height: 9px;
+        height: 7px;
         VerticalLayout {
             alignment: center;
-            Rectangle { height: 1px; background: Theme.border; }
+            Rectangle {
+                height: 1px;
+                background: Theme.menu-border;
+                opacity: 0.7;
+            }
         }
     }
 
@@ -2010,11 +2062,17 @@ slint::slint! {
                                 HorizontalLayout {
                                     spacing: 8px;
                                     alignment: start;
+                                    ActionBtn { label: "Fluent Modern"; stroke-col: root.current-theme-name == "Fluent Modern" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Fluent Modern"); } }
+                                    ActionBtn { label: "KDE Breeze"; stroke-col: root.current-theme-name == "KDE Breeze" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("KDE Breeze"); } }
                                     ActionBtn { label: "VFD Phosphor Green"; stroke-col: root.current-theme-name == "VFD Phosphor Green" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("VFD Phosphor Green"); } }
-                                    ActionBtn { label: "Amber CRT"; stroke-col: root.current-theme-name == "Amber CRT" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Amber CRT"); } }
-                                    ActionBtn { label: "Cyberpunk Cyan"; stroke-col: root.current-theme-name == "Cyberpunk Cyan" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Cyberpunk Cyan"); } }
                                     ActionBtn { label: "Nordic Frost"; stroke-col: root.current-theme-name == "Nordic Frost" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Nordic Frost"); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
                                     ActionBtn { label: "Solarized Daylight"; stroke-col: root.current-theme-name == "Solarized Daylight" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Solarized Daylight"); } }
+                                    ActionBtn { label: "Cyberpunk Cyan"; stroke-col: root.current-theme-name == "Cyberpunk Cyan" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Cyberpunk Cyan"); } }
+                                    ActionBtn { label: "Amber CRT"; stroke-col: root.current-theme-name == "Amber CRT" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Amber CRT"); } }
                                     ActionBtn { label: "Crimson Ops"; stroke-col: root.current-theme-name == "Crimson Ops" ? Theme.accent-primary : Theme.border; clicked => { root.apply-theme-preset("Crimson Ops"); } }
                                 }
                             }
@@ -2077,12 +2135,12 @@ slint::slint! {
                                 HorizontalLayout {
                                     spacing: 8px;
                                     alignment: start;
+                                    ActionBtn { label: "Sans-Serif"; stroke-col: root.custom-font-family == "sans-serif" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("sans-serif"); } }
+                                    ActionBtn { label: "Noto Sans"; stroke-col: root.custom-font-family == "Noto Sans" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("Noto Sans"); } }
+                                    ActionBtn { label: "Segoe UI"; stroke-col: root.custom-font-family == "Segoe UI" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("Segoe UI"); } }
                                     ActionBtn { label: "DejaVu Sans Mono"; stroke-col: root.custom-font-family == "DejaVu Sans Mono" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("DejaVu Sans Mono"); } }
                                     ActionBtn { label: "JetBrains Mono"; stroke-col: root.custom-font-family == "JetBrains Mono" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("JetBrains Mono"); } }
                                     ActionBtn { label: "Fira Code"; stroke-col: root.custom-font-family == "Fira Code" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("Fira Code"); } }
-                                    ActionBtn { label: "Cascadia Mono"; stroke-col: root.custom-font-family == "Cascadia Mono" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("Cascadia Mono"); } }
-                                    ActionBtn { label: "Consolas"; stroke-col: root.custom-font-family == "Consolas" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("Consolas"); } }
-                                    ActionBtn { label: "Sans-Serif"; stroke-col: root.custom-font-family == "sans-serif" ? Theme.accent-primary : Theme.border; clicked => { root.select-font-family("sans-serif"); } }
                                 }
                                 HorizontalLayout {
                                     spacing: 12px;
@@ -2214,281 +2272,292 @@ slint::slint! {
         }
 
         // 1. FILE MENU DROPDOWN
-        if root.open-menu == 1 : Rectangle {
+        if root.open-menu == 1 : MenuDropdownContainer {
             x: 6px;
             y: 28px;
-            width: 260px;
-            background: #10151d;
-            border-width: 1px;
-            border-color: Theme.nav-border;
-            border-radius: 6px;
-            drop-shadow-blur: 12px;
-            drop-shadow-color: #000000aa;
+            menu-width: 295px;
 
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                MenuDropdownItem {
-                    label: "↻  Refresh Telemetry Now";
-                    shortcut: "F5";
-                    triggered => { root.open-menu = 0; root.refresh-now(); }
-                }
-                MenuDropdownItem {
-                    label: "🧭  Export Flight Trace (.pulsetrace)";
-                    shortcut: "Ctrl+E";
-                    triggered => { root.open-menu = 0; root.export-flight-trace(); }
-                }
-                MenuDropdownItem {
-                    label: "ⓘ  Export System Info Report (.txt)";
-                    shortcut: "Ctrl+I";
-                    triggered => { root.open-menu = 0; root.export-sysinfo(); }
-                }
-                MenuDropdownItem {
-                    label: "💾  Save Settings & Theme";
-                    shortcut: "Ctrl+S";
-                    triggered => { root.open-menu = 0; root.save-settings(); }
-                }
-                MenuDivider {}
-                MenuDropdownItem {
-                    label: "⏻  Exit PulseDeck";
-                    shortcut: "Ctrl+Q";
-                    triggered => { root.open-menu = 0; root.quit-app(); }
-                }
+            MenuDropdownItem {
+                icon: "↻";
+                label: "Refresh Telemetry Now";
+                shortcut: "F5";
+                triggered => { root.open-menu = 0; root.refresh-now(); }
+            }
+            MenuDropdownItem {
+                icon: "🧭";
+                label: "Export Flight Trace (.pulsetrace)";
+                shortcut: "Ctrl+E";
+                triggered => { root.open-menu = 0; root.export-flight-trace(); }
+            }
+            MenuDropdownItem {
+                icon: "ⓘ";
+                label: "Export System Info Report (.txt)";
+                shortcut: "Ctrl+I";
+                triggered => { root.open-menu = 0; root.export-sysinfo(); }
+            }
+            MenuDropdownItem {
+                icon: "💾";
+                label: "Save Settings & Theme";
+                shortcut: "Ctrl+S";
+                triggered => { root.open-menu = 0; root.save-settings(); }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "⏻";
+                label: "Exit PulseDeck";
+                shortcut: "Ctrl+Q";
+                triggered => { root.open-menu = 0; root.quit-app(); }
             }
         }
 
         // 2. EDIT MENU DROPDOWN
-        if root.open-menu == 2 : Rectangle {
-            x: 50px;
+        if root.open-menu == 2 : MenuDropdownContainer {
+            x: 52px;
             y: 28px;
-            width: 260px;
-            background: #10151d;
-            border-width: 1px;
-            border-color: Theme.nav-border;
-            border-radius: 6px;
-            drop-shadow-blur: 12px;
-            drop-shadow-color: #000000aa;
+            menu-width: 280px;
 
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                MenuDropdownItem {
-                    label: "🔍  Filter Processes...";
-                    triggered => { root.open-menu = 0; root.select-tab(2, "Processes"); }
+            MenuDropdownItem {
+                icon: "🔍";
+                label: "Filter Processes...";
+                triggered => { root.open-menu = 0; root.select-tab(2, "Processes"); }
+            }
+            MenuDropdownItem {
+                icon: "🌐";
+                label: "Filter Network Connections...";
+                triggered => { root.open-menu = 0; root.select-tab(9, "Connections"); }
+            }
+            MenuDropdownItem {
+                icon: "⚙";
+                label: "Filter Kernel Drivers...";
+                triggered => { root.open-menu = 0; root.select-tab(11, "Drivers"); }
+            }
+            MenuDropdownItem {
+                icon: "🧹";
+                label: "Clear All Active Search Filters";
+                triggered => {
+                    root.open-menu = 0;
+                    root.proc-filter = "";
+                    root.conn-filter = "";
+                    root.drv-filter = "";
+                    root.catalog-filter = "";
+                    root.refresh-filters();
                 }
-                MenuDropdownItem {
-                    label: "🌐  Filter Network Connections...";
-                    triggered => { root.open-menu = 0; root.select-tab(9, "Connections"); }
-                }
-                MenuDropdownItem {
-                    label: "⚙  Filter Kernel Drivers...";
-                    triggered => { root.open-menu = 0; root.select-tab(11, "Drivers"); }
-                }
-                MenuDropdownItem {
-                    label: "🧹  Clear All Active Search Filters";
-                    triggered => {
-                        root.open-menu = 0;
-                        root.proc-filter = "";
-                        root.conn-filter = "";
-                        root.drv-filter = "";
-                        root.catalog-filter = "";
-                        root.refresh-filters();
-                    }
-                }
-                MenuDivider {}
-                MenuDropdownItem {
-                    label: "⚙  Settings & Preferences...";
-                    triggered => { root.open-menu = 0; root.select-tab(14, "Settings"); }
-                }
-                MenuDropdownItem {
-                    label: "🖌  Colors & Theme Studio...";
-                    triggered => { root.open-menu = 0; root.select-tab(15, "Colors & Theme"); }
-                }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "⚙";
+                label: "Settings & Preferences...";
+                triggered => { root.open-menu = 0; root.select-tab(14, "Settings"); }
+            }
+            MenuDropdownItem {
+                icon: "🖌";
+                label: "Colors & Theme Studio...";
+                triggered => { root.open-menu = 0; root.select-tab(15, "Colors & Theme"); }
             }
         }
 
         // 3. VIEW MENU DROPDOWN
-        if root.open-menu == 3 : Rectangle {
-            x: 96px;
+        if root.open-menu == 3 : MenuDropdownContainer {
+            x: 104px;
             y: 28px;
-            width: 270px;
-            background: #10151d;
-            border-width: 1px;
-            border-color: Theme.nav-border;
-            border-radius: 6px;
-            drop-shadow-blur: 12px;
-            drop-shadow-color: #000000aa;
+            menu-width: 290px;
 
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                MenuDropdownItem {
-                    label: "⌂  Summary Dashboard";
-                    triggered => { root.open-menu = 0; root.select-tab(0, "Summary"); }
+            MenuDropdownItem {
+                icon: "⌂";
+                label: "Summary Dashboard";
+                triggered => { root.open-menu = 0; root.select-tab(0, "Summary"); }
+            }
+            MenuDropdownItem {
+                icon: "📈";
+                label: "Performance Observatory";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); }
+            }
+            MenuDropdownItem {
+                icon: "📊";
+                label: "Processes (Toggle Tree/List)";
+                triggered => {
+                    root.open-menu = 0;
+                    root.proc-tree-view = !root.proc-tree-view;
+                    root.select-tab(2, "Processes");
                 }
-                MenuDropdownItem {
-                    label: "📈  Performance Observatory";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); }
-                }
-                MenuDropdownItem {
-                    label: "📊  Processes (Toggle Tree/List)";
-                    triggered => {
-                        root.open-menu = 0;
-                        root.proc-tree-view = !root.proc-tree-view;
-                        root.select-tab(2, "Processes");
-                    }
-                }
-                MenuDropdownItem {
-                    label: "⚡  Power & Frequency Sensors";
-                    triggered => { root.open-menu = 0; root.select-tab(7, "Power & Freq"); }
-                }
-                MenuDropdownItem {
-                    label: "🖴  Disk Space Analyzer";
-                    triggered => { root.open-menu = 0; root.select-tab(12, "Disk Space"); }
-                }
-                MenuDropdownItem {
-                    label: "⏱  Hardware Benchmarks";
-                    triggered => { root.open-menu = 0; root.select-tab(13, "Benchmarks"); }
-                }
-                MenuDivider {}
-                MenuDropdownItem {
-                    label: root.show-sidebar ? "◧  Hide Navigation Sidebar" : "◧  Show Navigation Sidebar";
-                    triggered => { root.open-menu = 0; root.show-sidebar = !root.show-sidebar; }
-                }
-                MenuDropdownItem {
-                    label: root.custom-show-grid ? "▦  Graph Gridlines: ON" : "▦  Graph Gridlines: OFF";
-                    triggered => { root.open-menu = 0; root.toggle-graph-grid(); }
-                }
-                MenuDropdownItem {
-                    label: root.custom-compact-rows ? "↕  Table Density: Compact" : "↕  Table Density: Standard";
-                    triggered => { root.open-menu = 0; root.toggle-compact-rows(); }
-                }
-                MenuDropdownItem {
-                    label: "A+  Increase Font Size";
-                    triggered => { root.open-menu = 0; root.adjust-font-size(1); }
-                }
-                MenuDropdownItem {
-                    label: "A-  Decrease Font Size";
-                    triggered => { root.open-menu = 0; root.adjust-font-size(-1); }
-                }
+            }
+            MenuDropdownItem {
+                icon: "⚡";
+                label: "Power & Frequency Sensors";
+                triggered => { root.open-menu = 0; root.select-tab(7, "Power & Freq"); }
+            }
+            MenuDropdownItem {
+                icon: "🖴";
+                label: "Disk Space Analyzer";
+                triggered => { root.open-menu = 0; root.select-tab(12, "Disk Space"); }
+            }
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Hardware Benchmarks";
+                triggered => { root.open-menu = 0; root.select-tab(13, "Benchmarks"); }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "🎨";
+                label: "Theme: Fluent Modern";
+                shortcut: root.current-theme-name == "Fluent Modern" ? "✓" : "";
+                triggered => { root.open-menu = 0; root.apply-theme-preset("Fluent Modern"); }
+            }
+            MenuDropdownItem {
+                icon: "🎨";
+                label: "Theme: KDE Breeze";
+                shortcut: root.current-theme-name == "KDE Breeze" ? "✓" : "";
+                triggered => { root.open-menu = 0; root.apply-theme-preset("KDE Breeze"); }
+            }
+            MenuDropdownItem {
+                icon: "🎨";
+                label: "Theme: VFD Green";
+                shortcut: root.current-theme-name == "VFD Phosphor Green" ? "✓" : "";
+                triggered => { root.open-menu = 0; root.apply-theme-preset("VFD Phosphor Green"); }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "◧";
+                label: root.show-sidebar ? "Hide Navigation Sidebar" : "Show Navigation Sidebar";
+                triggered => { root.open-menu = 0; root.show-sidebar = !root.show-sidebar; }
+            }
+            MenuDropdownItem {
+                icon: "▦";
+                label: "Graph Gridlines";
+                shortcut: root.custom-show-grid ? "ON" : "OFF";
+                triggered => { root.open-menu = 0; root.toggle-graph-grid(); }
+            }
+            MenuDropdownItem {
+                icon: "↕";
+                label: "Table Density";
+                shortcut: root.custom-compact-rows ? "Compact" : "Standard";
+                triggered => { root.open-menu = 0; root.toggle-compact-rows(); }
+            }
+            MenuDropdownItem {
+                icon: "A+";
+                label: "Increase Font Size";
+                triggered => { root.open-menu = 0; root.adjust-font-size(1); }
+            }
+            MenuDropdownItem {
+                icon: "A-";
+                label: "Decrease Font Size";
+                triggered => { root.open-menu = 0; root.adjust-font-size(-1); }
             }
         }
 
         // 4. PERFORMANCE MENU DROPDOWN
-        if root.open-menu == 4 : Rectangle {
-            x: 146px;
+        if root.open-menu == 4 : MenuDropdownContainer {
+            x: 160px;
             y: 28px;
-            width: 280px;
-            background: #10151d;
-            border-width: 1px;
-            border-color: Theme.nav-border;
-            border-radius: 6px;
-            drop-shadow-blur: 12px;
-            drop-shadow-color: #000000aa;
+            menu-width: 330px;
 
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                MenuDropdownItem {
-                    label: "⚙  CPU Utilization & Topology";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(0); }
+            MenuDropdownItem {
+                icon: "⚙";
+                label: "CPU Utilization & Topology";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(0); }
+            }
+            MenuDropdownItem {
+                icon: "⊞";
+                label: root.perf-cpu-expanded ? "Switch to Overall Graph" : "Switch to Per-Core Grid";
+                shortcut: root.perf-cpu-expanded ? "Per-Core" : "Overall";
+                triggered => {
+                    root.open-menu = 0;
+                    root.perf-cpu-expanded = !root.perf-cpu-expanded;
+                    root.select-tab(1, "Performance");
+                    root.select-perf-item(0);
                 }
-                MenuDropdownItem {
-                    label: root.perf-cpu-expanded ? "⊞  CPU View: Switch to Overall Graph" : "⊞  CPU View: Switch to Per-Core Grid";
-                    triggered => {
-                        root.open-menu = 0;
-                        root.perf-cpu-expanded = !root.perf-cpu-expanded;
-                        root.select-tab(1, "Performance");
-                        root.select-perf-item(0);
-                    }
-                }
-                MenuDropdownItem {
-                    label: "▦  Memory & Swap";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(1); }
-                }
-                MenuDropdownItem {
-                    label: "🖴  Physical Disks";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(2); }
-                }
-                MenuDropdownItem {
-                    label: "🌐  Network Adapters";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(3); }
-                }
-                MenuDropdownItem {
-                    label: "🖥  GPU Device";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(4); }
-                }
-                MenuDropdownItem {
-                    label: "⚡  Whole Machine Energy";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(5); }
-                }
-                MenuDropdownItem {
-                    label: "🌡  Whole Machine Thermals";
-                    triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(6); }
-                }
-                MenuDivider {}
-                MenuDropdownItem {
-                    label: "⏱  Update Speed: Fast (250 ms)";
-                    shortcut: root.custom-refresh-ms == 250 ? "✓" : "";
-                    triggered => { root.open-menu = 0; root.set-refresh-rate(250); }
-                }
-                MenuDropdownItem {
-                    label: "⏱  Update Speed: High (500 ms)";
-                    shortcut: root.custom-refresh-ms == 500 ? "✓" : "";
-                    triggered => { root.open-menu = 0; root.set-refresh-rate(500); }
-                }
-                MenuDropdownItem {
-                    label: "⏱  Update Speed: Normal (1000 ms)";
-                    shortcut: root.custom-refresh-ms == 1000 ? "✓" : "";
-                    triggered => { root.open-menu = 0; root.set-refresh-rate(1000); }
-                }
-                MenuDropdownItem {
-                    label: "⏱  Update Speed: Low (2000 ms)";
-                    shortcut: root.custom-refresh-ms == 2000 ? "✓" : "";
-                    triggered => { root.open-menu = 0; root.set-refresh-rate(2000); }
-                }
+            }
+            MenuDropdownItem {
+                icon: "▦";
+                label: "Memory & Swap";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(1); }
+            }
+            MenuDropdownItem {
+                icon: "🖴";
+                label: "Physical Disks";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(2); }
+            }
+            MenuDropdownItem {
+                icon: "🌐";
+                label: "Network Adapters";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(3); }
+            }
+            MenuDropdownItem {
+                icon: "🖥";
+                label: "GPU Device";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(4); }
+            }
+            MenuDropdownItem {
+                icon: "⚡";
+                label: "Whole Machine Energy";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(5); }
+            }
+            MenuDropdownItem {
+                icon: "🌡";
+                label: "Whole Machine Thermals";
+                triggered => { root.open-menu = 0; root.select-tab(1, "Performance"); root.select-perf-item(6); }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Update Speed: Fast (250 ms)";
+                shortcut: root.custom-refresh-ms == 250 ? "✓" : "";
+                triggered => { root.open-menu = 0; root.set-refresh-rate(250); }
+            }
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Update Speed: High (500 ms)";
+                shortcut: root.custom-refresh-ms == 500 ? "✓" : "";
+                triggered => { root.open-menu = 0; root.set-refresh-rate(500); }
+            }
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Update Speed: Normal (1000 ms)";
+                shortcut: root.custom-refresh-ms == 1000 ? "✓" : "";
+                triggered => { root.open-menu = 0; root.set-refresh-rate(1000); }
+            }
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Update Speed: Low (2000 ms)";
+                shortcut: root.custom-refresh-ms == 2000 ? "✓" : "";
+                triggered => { root.open-menu = 0; root.set-refresh-rate(2000); }
             }
         }
 
         // 5. HELP MENU DROPDOWN
-        if root.open-menu == 5 : Rectangle {
-            x: 242px;
+        if root.open-menu == 5 : MenuDropdownContainer {
+            x: 268px;
             y: 28px;
-            width: 260px;
-            background: #10151d;
-            border-width: 1px;
-            border-color: Theme.nav-border;
-            border-radius: 6px;
-            drop-shadow-blur: 12px;
-            drop-shadow-color: #000000aa;
+            menu-width: 270px;
 
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                MenuDropdownItem {
-                    label: "ⓘ  System Diagnostic Report";
-                    triggered => { root.open-menu = 0; root.select-tab(3, "System Info"); }
-                }
-                MenuDropdownItem {
-                    label: "🧭  Flight Recorder Timeline";
-                    triggered => { root.open-menu = 0; root.select-tab(8, "Flight Recorder"); }
-                }
-                MenuDropdownItem {
-                    label: "⏱  Run Hardware Benchmarks";
-                    triggered => { root.open-menu = 0; root.select-tab(13, "Benchmarks"); root.run-benchmarks(); }
-                }
-                MenuDivider {}
-                MenuDropdownItem {
-                    label: "↺  Reset Theme & Settings";
-                    triggered => { root.open-menu = 0; root.reset-settings(); }
-                }
-                MenuDropdownItem {
-                    label: "★  About PulseDeck v1.1.0";
-                    triggered => {
-                        root.open-menu = 0;
-                        root.status-message = "PulseDeck v1.1.0 — Native Slint Hardware Telemetry & System Observatory";
-                        root.select-tab(3, "System Info");
-                    }
+            MenuDropdownItem {
+                icon: "ⓘ";
+                label: "System Diagnostic Report";
+                triggered => { root.open-menu = 0; root.select-tab(3, "System Info"); }
+            }
+            MenuDropdownItem {
+                icon: "🧭";
+                label: "Flight Recorder Timeline";
+                triggered => { root.open-menu = 0; root.select-tab(8, "Flight Recorder"); }
+            }
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Run Hardware Benchmarks";
+                triggered => { root.open-menu = 0; root.select-tab(13, "Benchmarks"); root.run-benchmarks(); }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "↺";
+                label: "Reset Theme & Settings";
+                triggered => { root.open-menu = 0; root.reset-settings(); }
+            }
+            MenuDropdownItem {
+                icon: "★";
+                label: "About PulseDeck v1.1.0";
+                triggered => {
+                    root.open-menu = 0;
+                    root.status-message = "PulseDeck v1.1.0 — Native Slint Hardware Telemetry & System Observatory";
+                    root.select-tab(3, "System Info");
                 }
             }
         }
@@ -4374,6 +4443,13 @@ fn format_uptime_dhms(secs: u64) -> String {
 fn apply_settings_to_window(w: &MainWindow, s: &AppSettings) {
     let t = w.global::<Theme>();
     let to_col = |rgb: [u8; 3]| Color::from_rgb_u8(rgb[0], rgb[1], rgb[2]);
+    let blend = |c1: [u8; 3], c2: [u8; 3], f: f32| -> Color {
+        let f_clamped = f.clamp(0.0, 1.0);
+        let r = (c1[0] as f32 * (1.0 - f_clamped) + c2[0] as f32 * f_clamped).clamp(0.0, 255.0) as u8;
+        let g = (c1[1] as f32 * (1.0 - f_clamped) + c2[1] as f32 * f_clamped).clamp(0.0, 255.0) as u8;
+        let b = (c1[2] as f32 * (1.0 - f_clamped) + c2[2] as f32 * f_clamped).clamp(0.0, 255.0) as u8;
+        Color::from_rgb_u8(r, g, b)
+    };
 
     t.set_bg_main(to_col(s.theme.bg_main));
     t.set_bg_panel(to_col(s.theme.bg_panel));
@@ -4387,6 +4463,14 @@ fn apply_settings_to_window(w: &MainWindow, s: &AppSettings) {
     t.set_accent_warn(to_col(s.theme.accent_warn));
     t.set_accent_danger(to_col(s.theme.accent_danger));
     t.set_font_family(SharedString::from(s.font_family.as_str()));
+
+    // Dynamic UI & Menu colors matched harmoniously to active theme
+    t.set_row_alt(blend(s.theme.bg_main, s.theme.bg_card, 0.45));
+    t.set_nav_selected(blend(s.theme.bg_panel, s.theme.accent_primary, 0.22));
+    t.set_nav_border(blend(s.theme.border, s.theme.accent_primary, 0.40));
+    t.set_menu_bg(blend(s.theme.bg_panel, s.theme.bg_card, 0.70));
+    t.set_menu_border(blend(s.theme.border, s.theme.accent_primary, 0.35));
+    t.set_menu_hover(blend(s.theme.bg_card, s.theme.accent_primary, 0.20));
 
     let base = s.base_font_size.clamp(9, 22) as f32;
     t.set_font_size_sm((base - 1.0).max(9.0));

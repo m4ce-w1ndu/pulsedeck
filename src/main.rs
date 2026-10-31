@@ -30,7 +30,7 @@ struct Cli {
     #[arg(long)]
     gui: bool,
 
-    /// Apply a colour theme preset ("VFD Phosphor Green", "Amber CRT", "Cyberpunk Cyan", "Nordic Frost", "Solarized Daylight", "Crimson Ops")
+    /// Apply a colour theme preset ("Fluent Modern", "KDE Breeze", "VFD Phosphor Green", "Amber CRT", "Cyberpunk Cyan", "Nordic Frost", "Solarized Daylight", "Crimson Ops")
     #[arg(long, value_name = "PRESET")]
     theme: Option<String>,
 
