@@ -427,6 +427,150 @@ slint::slint! {
         }
     }
 
+    component VectorTelemetryChart inherits Rectangle {
+        in property <string> stroke-path: "";
+        in property <string> fill-path: "";
+        in property <string> kernel-path: "";
+        in property <color> stroke-color: #36c5ff;
+        in property <color> fill-color: #36c5ff22;
+        in property <color> kernel-color: #ff5566;
+        in property <bool> has-kernel: false;
+        in property <bool> show-grid: true;
+        in property <string> max-label: "100%";
+        in property <string> min-label: "0%";
+        in property <string> time-label: "60 seconds";
+        in property <string> title-label: "% Utilization";
+        in property <string> current-val-label: "";
+
+        background: Theme.ui-style == 1 ? #00000022 : (Theme.ui-style == 2 ? Theme.bg-card : #04080b);
+        border-width: 1px;
+        border-color: Theme.border;
+        border-radius: Theme.card-radius;
+        clip: true;
+
+        // Grid lines (Crisp vector rendering)
+        if root.show-grid : Rectangle {
+            width: 100%;
+            height: 100%;
+
+            // Horizontal lines
+            Rectangle { y: parent.height * 0.25; width: 100%; height: 1px; background: Theme.border; opacity: 0.35; }
+            Rectangle { y: parent.height * 0.50; width: 100%; height: 1px; background: Theme.border; opacity: 0.35; }
+            Rectangle { y: parent.height * 0.75; width: 100%; height: 1px; background: Theme.border; opacity: 0.35; }
+
+            // Vertical lines (time divisions)
+            Rectangle { x: parent.width * 0.166; width: 1px; height: 100%; background: Theme.border; opacity: 0.35; }
+            Rectangle { x: parent.width * 0.333; width: 1px; height: 100%; background: Theme.border; opacity: 0.35; }
+            Rectangle { x: parent.width * 0.500; width: 1px; height: 100%; background: Theme.border; opacity: 0.35; }
+            Rectangle { x: parent.width * 0.666; width: 1px; height: 100%; background: Theme.border; opacity: 0.35; }
+            Rectangle { x: parent.width * 0.833; width: 1px; height: 100%; background: Theme.border; opacity: 0.35; }
+        }
+
+        // Shaded fill under curve
+        if root.fill-path != "" : Path {
+            width: 100%;
+            height: 100%;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1000;
+            viewbox-height: 1000;
+            fill: root.fill-color;
+            commands: root.fill-path;
+        }
+
+        // Main telemetry stroke path (crisp GPU antialiased line)
+        if root.stroke-path != "" : Path {
+            width: 100%;
+            height: 100%;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1000;
+            viewbox-height: 1000;
+            stroke: root.stroke-color;
+            stroke-width: 2px;
+            commands: root.stroke-path;
+        }
+
+        // Kernel stroke path (e.g. CPU kernel time)
+        if root.has-kernel && root.kernel-path != "" : Path {
+            width: 100%;
+            height: 100%;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1000;
+            viewbox-height: 1000;
+            stroke: root.kernel-color;
+            stroke-width: 1.5px;
+            commands: root.kernel-path;
+        }
+
+        // Header and Footer Overlay Labels
+        // Top-Left: Title + Max Label
+        HorizontalLayout {
+            x: 8px;
+            y: 6px;
+            spacing: 8px;
+            Text {
+                text: root.title-label;
+                color: Theme.text-main;
+                font-family: Theme.font-ui;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            Text {
+                text: "· " + root.max-label;
+                color: Theme.text-dim;
+                font-family: Theme.font-family;
+                font-size: 11px;
+            }
+        }
+
+        // Top-Right: Current live value badge
+        if root.current-val-label != "" : Rectangle {
+            x: parent.width - self.width - 8px;
+            y: 5px;
+            height: 20px;
+            border-radius: 4px;
+            background: #000000aa;
+            border-width: 1px;
+            border-color: root.stroke-color;
+            opacity: 0.9;
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                alignment: center;
+                Text {
+                    text: root.current-val-label;
+                    color: root.stroke-color;
+                    font-family: Theme.font-family;
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Bottom-Left: Min Label
+        Text {
+            x: 8px;
+            y: parent.height - self.height - 4px;
+            text: root.min-label;
+            color: Theme.text-dim;
+            font-family: Theme.font-family;
+            font-size: 10px;
+        }
+
+        // Bottom-Right: Time Scale
+        Text {
+            x: parent.width - self.width - 8px;
+            y: parent.height - self.height - 4px;
+            text: root.time-label;
+            color: Theme.text-dim;
+            font-family: Theme.font-ui;
+            font-size: 10px;
+        }
+    }
+
     export component MainWindow inherits Window {
         title: "PulseDeck";
         preferred-width: 1480px;
@@ -515,6 +659,26 @@ slint::slint! {
         in property <string> perf-sec-graph-label: "GPU memory in use";
         in property <string> perf-sec-graph-right: "";
         in property <bool> perf-has-secondary-graph: false;
+
+        // Performance Native Vector Graphics properties
+        in property <string> perf-vector-stroke: "";
+        in property <string> perf-vector-fill: "";
+        in property <string> perf-vector-kernel: "";
+        in property <color> perf-vector-color: #36c5ff;
+        in property <color> perf-vector-fill-color: #36c5ff22;
+        in property <bool> perf-vector-has-kernel: false;
+        in property <string> perf-vector-current-val: "";
+        in property <string> perf-vector-max-label: "100%";
+        in property <string> perf-vector-min-label: "0%";
+
+        // Performance Secondary Vector Graphics properties
+        in property <string> perf-sec-vector-stroke: "";
+        in property <string> perf-sec-vector-fill: "";
+        in property <color> perf-sec-vector-color: #b84dff;
+        in property <color> perf-sec-vector-fill-color: #b84dff22;
+        in property <string> perf-sec-vector-current-val: "";
+        in property <string> perf-sec-vector-max-label: "100%";
+        in property <string> perf-sec-vector-min-label: "0%";
 
         // Performance Bottom Readouts (4 primary metric blocks + 8 detail kv pairs)
         in property <string> perf-m1-label: "Utilization";
@@ -1327,12 +1491,12 @@ slint::slint! {
                                 clip: true;
 
                                 // Interactive Right-Click Context Menu & Double-Click Toggle
-                                TouchArea {
+                                ta := TouchArea {
                                     mouse-cursor: pointer;
                                     pointer-event(event) => {
                                         if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
-                                            root.cpu-context-x = 520px;
-                                            root.cpu-context-y = 160px;
+                                            root.cpu-context-x = ta.mouse-x + 230px;
+                                            root.cpu-context-y = ta.mouse-y + 120px;
                                             root.cpu-context-open = true;
                                         }
                                     }
@@ -1354,26 +1518,32 @@ slint::slint! {
                                 if !(root.perf-selected-idx == 0 && root.perf-cpu-expanded) : VerticalLayout {
                                     spacing: 6px;
                                     padding: 4px;
-                                    Image {
-                                        vertical-stretch: 3;
-                                        width: 100%;
-                                        source: root.perf-main-graph-img;
-                                        image-fit: fill;
+                                    VectorTelemetryChart {
+                                        vertical-stretch: root.perf-has-secondary-graph ? 3 : 1;
+                                        stroke-path: root.perf-vector-stroke;
+                                        fill-path: root.perf-vector-fill;
+                                        kernel-path: root.perf-vector-kernel;
+                                        has-kernel: root.perf-vector-has-kernel;
+                                        stroke-color: root.perf-vector-color;
+                                        fill-color: root.perf-vector-fill-color;
+                                        show-grid: root.custom-show-grid;
+                                        title-label: root.perf-main-graph-label;
+                                        max-label: root.perf-vector-max-label;
+                                        min-label: root.perf-vector-min-label;
+                                        current-val-label: root.perf-vector-current-val;
                                     }
-                                    if root.perf-has-secondary-graph : VerticalLayout {
+                                    if root.perf-has-secondary-graph : VectorTelemetryChart {
                                         vertical-stretch: 1;
-                                        spacing: 2px;
-                                        HorizontalLayout {
-                                            alignment: space-between;
-                                            Text { text: root.perf-sec-graph-label; color: Theme.text-main; font-size: Theme.font-size-base; font-family: Theme.font-ui; }
-                                            Text { text: root.perf-sec-graph-right; color: Theme.text-main; font-size: Theme.font-size-base; font-family: Theme.font-ui; }
-                                        }
-                                        Image {
-                                            vertical-stretch: 1;
-                                            width: 100%;
-                                            source: root.perf-secondary-graph-img;
-                                            image-fit: fill;
-                                        }
+                                        stroke-path: root.perf-sec-vector-stroke;
+                                        fill-path: root.perf-sec-vector-fill;
+                                        has-kernel: false;
+                                        stroke-color: root.perf-sec-vector-color;
+                                        fill-color: root.perf-sec-vector-fill-color;
+                                        show-grid: root.custom-show-grid;
+                                        title-label: root.perf-sec-graph-label;
+                                        max-label: root.perf-sec-vector-max-label;
+                                        min-label: root.perf-sec-vector-min-label;
+                                        current-val-label: root.perf-sec-vector-current-val;
                                     }
                                 }
                             }
@@ -2838,7 +3008,7 @@ slint::slint! {
             }
         }
 
-        // CPU Graph Context Menu Backdrop
+        // Performance Telemetry Context Menu Backdrop
         if root.cpu-context-open : TouchArea {
             x: 0px;
             y: 0px;
@@ -2847,49 +3017,295 @@ slint::slint! {
             clicked => { root.cpu-context-open = false; }
         }
 
-        // CPU Graph Context Menu
+        // Performance Telemetry Context Menu
         if root.cpu-context-open : MenuDropdownContainer {
             x: clamp(root.cpu-context-x, 10px, root.width - 290px);
-            y: clamp(root.cpu-context-y, 32px, root.height - 290px);
+            y: clamp(root.cpu-context-y, 32px, root.height - 350px);
             menu-width: 280px;
 
-            Rectangle {
-                height: 24px;
-                HorizontalLayout {
-                    padding-left: 8px;
-                    padding-right: 8px;
-                    alignment: space-between;
-                    Text {
-                        text: "Change graph to";
-                        color: Theme.accent-primary;
-                        font-family: Theme.font-ui;
-                        font-size: 11px;
-                        font-weight: 700;
-                        vertical-alignment: center;
+            // 0 = CPU
+            if root.perf-selected-idx == 0 : VerticalLayout {
+                spacing: 2px;
+                padding: 0px;
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text { text: "CPU Telemetry Options"; color: Theme.accent-primary; font-family: Theme.font-ui; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    icon: "📈";
+                    label: "Overall Utilization";
+                    shortcut: !root.perf-cpu-expanded ? "✓" : "";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.perf-cpu-expanded = false;
+                        root.refresh-now();
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "⊞";
+                    label: "Logical Processors (Per-Core)";
+                    shortcut: root.perf-cpu-expanded ? "✓" : "";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.perf-cpu-expanded = true;
+                        root.refresh-now();
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "⚡";
+                    label: "Copy CPU Topology & Specs";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard(root.perf-header-title + " · " + root.perf-header-pct + " · " + root.perf-header-sub + "\nSpeed: " + root.perf-m2-val + " · " + root.perf-kv1-k + " " + root.perf-kv1-v + "\nGovernor: " + root.perf-kv8-v);
                     }
                 }
             }
-            MenuDivider {}
-            MenuDropdownItem {
-                icon: "📈";
-                label: "Overall utilization";
-                shortcut: !root.perf-cpu-expanded ? "✓" : "";
-                triggered => {
-                    root.cpu-context-open = false;
-                    root.perf-cpu-expanded = false;
-                    root.refresh-now();
+
+            // 1 = Memory
+            if root.perf-selected-idx == 1 : VerticalLayout {
+                spacing: 2px;
+                padding: 0px;
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text { text: "Memory Telemetry Options"; color: Theme.accent-primary; font-family: Theme.font-ui; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    icon: "🧠";
+                    label: "Memory In-Use vs Available";
+                    shortcut: "✓";
+                    triggered => {
+                        root.cpu-context-open = false;
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "👥";
+                    label: "View Process Memory Consumers";
+                    shortcut: "Tab";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.select-tab(2, "Processes");
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "📋";
+                    label: "Copy Memory Allocation Stats";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard("Memory In Use: " + root.perf-m1-val + " / Total: " + root.perf-header-sub + "\nAvailable: " + root.perf-m2-val + " · Cached: " + root.perf-m4-val + "\nSwap: " + root.perf-m5-val);
+                    }
                 }
             }
-            MenuDropdownItem {
-                icon: "⊞";
-                label: "Logical processors";
-                shortcut: root.perf-cpu-expanded ? "✓" : "";
-                triggered => {
-                    root.cpu-context-open = false;
-                    root.perf-cpu-expanded = true;
-                    root.refresh-now();
+
+            // 2 = Disk
+            if root.perf-selected-idx == 2 : VerticalLayout {
+                spacing: 2px;
+                padding: 0px;
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text { text: "Disk Telemetry Options"; color: Theme.accent-primary; font-family: Theme.font-ui; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    icon: "💾";
+                    label: "Read / Write Throughput";
+                    shortcut: "✓";
+                    triggered => {
+                        root.cpu-context-open = false;
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "🖴";
+                    label: "Open Disk Space Analyzer";
+                    shortcut: "Tab";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.select-tab(12, "Disk Space");
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "📋";
+                    label: "Copy Disk Throughput Stats";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard("Disk Activity: " + root.perf-header-pct + " · " + root.perf-sec-graph-right);
+                    }
                 }
             }
+
+            // 3 = Network
+            if root.perf-selected-idx == 3 : VerticalLayout {
+                spacing: 2px;
+                padding: 0px;
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text { text: "Network Telemetry Options"; color: Theme.accent-primary; font-family: Theme.font-ui; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    icon: "🌐";
+                    label: "Receive / Send Throughput";
+                    shortcut: "✓";
+                    triggered => {
+                        root.cpu-context-open = false;
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "🔌";
+                    label: "Open Network Connections";
+                    shortcut: "Tab";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.select-tab(9, "Connections");
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "📋";
+                    label: "Copy Network Adapter Info";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard(root.perf-header-title + " · " + root.perf-header-sub + "\nThroughput: " + root.perf-header-pct + " (" + root.perf-sec-graph-right + ")");
+                    }
+                }
+            }
+
+            // 4 = GPU
+            if root.perf-selected-idx == 4 : VerticalLayout {
+                spacing: 2px;
+                padding: 0px;
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text { text: "GPU Telemetry Options"; color: Theme.accent-primary; font-family: Theme.font-ui; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    icon: "🎮";
+                    label: "3D Engine & Compute Usage";
+                    shortcut: "✓";
+                    triggered => {
+                        root.cpu-context-open = false;
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "📼";
+                    label: "VRAM Dedicated & Shared Details";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard("GPU: " + root.perf-header-title + " (" + root.perf-header-pct + ")\nVRAM: " + root.perf-sec-graph-right + "\nDriver: " + root.perf-kv6-v);
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "📋";
+                    label: "Copy GPU Telemetry Summary";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard("GPU: " + root.perf-header-title + " | Usage: " + root.perf-header-pct + " | Temp: " + root.perf-m6-val + " | Power: " + root.perf-m5-val);
+                    }
+                }
+            }
+
+            // 5 = Energy
+            if root.perf-selected-idx == 5 : VerticalLayout {
+                spacing: 2px;
+                padding: 0px;
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text { text: "Energy & Power Options"; color: Theme.accent-primary; font-family: Theme.font-ui; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    icon: "⚡";
+                    label: "Package Power Draw (Watts)";
+                    shortcut: "✓";
+                    triggered => {
+                        root.cpu-context-open = false;
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "⚡";
+                    label: "Open Power & Freq Inspector";
+                    shortcut: "Tab";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.select-tab(7, "Power & Freq");
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "📋";
+                    label: "Copy Power Consumption Stats";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard("Instant Power Draw: " + root.perf-header-pct + " · " + root.perf-header-sub);
+                    }
+                }
+            }
+
+            // 6 = Thermals
+            if root.perf-selected-idx == 6 : VerticalLayout {
+                spacing: 2px;
+                padding: 0px;
+                Rectangle {
+                    height: 24px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text { text: "Thermal Sensors Options"; color: Theme.accent-primary; font-family: Theme.font-ui; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+                    }
+                }
+                MenuDivider {}
+                MenuDropdownItem {
+                    icon: "🌡️";
+                    label: "Package & Core Temperatures";
+                    shortcut: "✓";
+                    triggered => {
+                        root.cpu-context-open = false;
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "🩺";
+                    label: "Open System Diagnostics Report";
+                    shortcut: "Tab";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.select-tab(3, "System Info");
+                    }
+                }
+                MenuDropdownItem {
+                    icon: "📋";
+                    label: "Copy Temperature Stats";
+                    triggered => {
+                        root.cpu-context-open = false;
+                        root.copy-to-clipboard("Package Temp: " + root.perf-header-pct + " · " + root.perf-header-sub);
+                    }
+                }
+            }
+
+            // Common options for all Performance tabs
             MenuDivider {}
             MenuDropdownItem {
                 icon: "▦";
@@ -2918,13 +3334,13 @@ slint::slint! {
                     root.set-refresh-rate(1000);
                 }
             }
-            MenuDivider {}
             MenuDropdownItem {
-                icon: "📋";
-                label: "Copy Graph Summary";
+                icon: "⏱";
+                label: "Update Speed: Low (2000 ms)";
+                shortcut: root.custom-refresh-ms == 2000 ? "✓" : "";
                 triggered => {
                     root.cpu-context-open = false;
-                    root.copy-to-clipboard(root.perf-kv1-k + ": " + root.perf-kv1-v + " | " + root.perf-kv2-k + ": " + root.perf-kv2-v);
+                    root.set-refresh-rate(2000);
                 }
             }
         }
@@ -4216,23 +4632,26 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
 
             if w.get_perf_cpu_expanded() {
                 w.set_perf_cpu_cores_grid_img(render_per_core_mini_graphs_grid(
-                    960,
-                    330,
+                    1440,
+                    480,
                     &c.core_total_hist,
                     &c.core_kern_hist,
                 ));
             } else {
                 w.set_perf_has_secondary_graph(false);
                 w.set_perf_main_graph_label(SharedString::from("% Utilization"));
-                w.set_perf_main_graph_img(render_single_area_graph(
-                    900,
-                    280,
-                    &c.cpu_hist,
-                    100.0,
-                    [54, 197, 255],
-                    [14, 28, 40],
-                    c.settings.show_graph_grid,
-                ));
+                let (stroke, _) = generate_svg_stroke_path(&c.cpu_hist, 100.0);
+                let fill = generate_svg_fill_path(&stroke);
+                let (kern_stroke, _) = generate_svg_stroke_path(&c.cpu_kern_hist, 100.0);
+                w.set_perf_vector_stroke(SharedString::from(stroke));
+                w.set_perf_vector_fill(SharedString::from(fill));
+                w.set_perf_vector_kernel(SharedString::from(kern_stroke));
+                w.set_perf_vector_has_kernel(true);
+                w.set_perf_vector_color(Color::from_rgb_u8(54, 197, 255));
+                w.set_perf_vector_fill_color(Color::from_argb_u8(40, 54, 197, 255));
+                w.set_perf_vector_max_label(SharedString::from("100%"));
+                w.set_perf_vector_min_label(SharedString::from("0%"));
+                w.set_perf_vector_current_val(SharedString::from(format!("{:.1}%", snap.cpu.total_pct)));
             }
 
             let total_threads: u32 = snap.processes.iter().map(|p| p.threads).sum();
@@ -4297,15 +4716,17 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             ));
 
             w.set_perf_main_graph_label(SharedString::from("% Utilization"));
-            w.set_perf_main_graph_img(render_single_area_graph(
-                900,
-                220,
-                &c.gpu_busy_hist,
-                100.0,
-                [54, 197, 255],
-                [14, 28, 40],
-                c.settings.show_graph_grid,
-            ));
+            let (stroke, _) = generate_svg_stroke_path(&c.gpu_busy_hist, 100.0);
+            let fill = generate_svg_fill_path(&stroke);
+            w.set_perf_vector_stroke(SharedString::from(stroke));
+            w.set_perf_vector_fill(SharedString::from(fill));
+            w.set_perf_vector_has_kernel(false);
+            w.set_perf_vector_color(Color::from_rgb_u8(54, 197, 255));
+            w.set_perf_vector_fill_color(Color::from_argb_u8(40, 54, 197, 255));
+            w.set_perf_vector_max_label(SharedString::from("100%"));
+            w.set_perf_vector_min_label(SharedString::from("0%"));
+            w.set_perf_vector_current_val(SharedString::from(format!("{:.1}%", busy)));
+
             w.set_perf_has_secondary_graph(true);
             w.set_perf_sec_graph_label(SharedString::from("GPU memory in use"));
             w.set_perf_sec_graph_right(SharedString::from(format!(
@@ -4313,15 +4734,15 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
                 format_bytes(vram_u),
                 format_bytes(vram_t)
             )));
-            w.set_perf_secondary_graph_img(render_single_area_graph(
-                900,
-                64,
-                &c.gpu_vram_hist,
-                100.0,
-                [54, 197, 255],
-                [14, 28, 40],
-                c.settings.show_graph_grid,
-            ));
+            let (sec_stroke, _) = generate_svg_stroke_path(&c.gpu_vram_hist, 100.0);
+            let sec_fill = generate_svg_fill_path(&sec_stroke);
+            w.set_perf_sec_vector_stroke(SharedString::from(sec_stroke));
+            w.set_perf_sec_vector_fill(SharedString::from(sec_fill));
+            w.set_perf_sec_vector_color(Color::from_rgb_u8(184, 77, 255));
+            w.set_perf_sec_vector_fill_color(Color::from_argb_u8(40, 184, 77, 255));
+            w.set_perf_sec_vector_max_label(SharedString::from(format_bytes(vram_t)));
+            w.set_perf_sec_vector_min_label(SharedString::from("0 MB"));
+            w.set_perf_sec_vector_current_val(SharedString::from(format_bytes(vram_u)));
 
             w.set_perf_m1_label(SharedString::from("Capacity"));
             w.set_perf_m1_val(SharedString::from(format_bytes(vram_t)));
@@ -4397,15 +4818,17 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
                 [184, 77, 255],
             ));
             w.set_perf_main_graph_label(SharedString::from("Memory usage"));
-            w.set_perf_main_graph_img(render_single_area_graph(
-                900,
-                220,
-                &c.mem_hist,
-                100.0,
-                [184, 77, 255],
-                [28, 16, 40],
-                c.settings.show_graph_grid,
-            ));
+            let (stroke, _) = generate_svg_stroke_path(&c.mem_hist, 100.0);
+            let fill = generate_svg_fill_path(&stroke);
+            w.set_perf_vector_stroke(SharedString::from(stroke));
+            w.set_perf_vector_fill(SharedString::from(fill));
+            w.set_perf_vector_has_kernel(false);
+            w.set_perf_vector_color(Color::from_rgb_u8(184, 77, 255));
+            w.set_perf_vector_fill_color(Color::from_argb_u8(40, 184, 77, 255));
+            w.set_perf_vector_max_label(SharedString::from(format_bytes(snap.memory.total_bytes)));
+            w.set_perf_vector_min_label(SharedString::from("0 GB"));
+            w.set_perf_vector_current_val(SharedString::from(format!("{:.1}% ({})", snap.memory.used_pct, format_bytes(snap.memory.used_bytes))));
+
             w.set_perf_has_secondary_graph(true);
             w.set_perf_sec_graph_label(SharedString::from("Swap utilization"));
             w.set_perf_sec_graph_right(SharedString::from(format!(
@@ -4413,15 +4836,15 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
                 format_bytes(snap.memory.swap_used_bytes),
                 format_bytes(snap.memory.swap_total_bytes)
             )));
-            w.set_perf_secondary_graph_img(render_single_area_graph(
-                900,
-                64,
-                &c.swap_hist,
-                100.0,
-                [184, 77, 255],
-                [28, 16, 40],
-                c.settings.show_graph_grid,
-            ));
+            let (sec_stroke, _) = generate_svg_stroke_path(&c.swap_hist, 100.0);
+            let sec_fill = generate_svg_fill_path(&sec_stroke);
+            w.set_perf_sec_vector_stroke(SharedString::from(sec_stroke));
+            w.set_perf_sec_vector_fill(SharedString::from(sec_fill));
+            w.set_perf_sec_vector_color(Color::from_rgb_u8(245, 150, 35));
+            w.set_perf_sec_vector_fill_color(Color::from_argb_u8(40, 245, 150, 35));
+            w.set_perf_sec_vector_max_label(SharedString::from(format_bytes(snap.memory.swap_total_bytes)));
+            w.set_perf_sec_vector_min_label(SharedString::from("0 GB"));
+            w.set_perf_sec_vector_current_val(SharedString::from(format_bytes(snap.memory.swap_used_bytes)));
 
             w.set_perf_m1_label(SharedString::from("In use"));
             w.set_perf_m1_val(SharedString::from(format_bytes(snap.memory.used_bytes)));
@@ -4475,32 +4898,34 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
                 (disk_util / 100.0).clamp(0.02, 1.0),
                 [34, 229, 139],
             ));
-            w.set_perf_main_graph_label(SharedString::from("Disk Read Throughput (MB/s)"));
-            w.set_perf_main_graph_img(render_single_area_graph(
-                900,
-                220,
-                &c.disk_r_hist,
-                0.0,
-                [34, 229, 139],
-                [12, 32, 22],
-                c.settings.show_graph_grid,
-            ));
+            w.set_perf_main_graph_label(SharedString::from("Disk Read Throughput"));
+            let (stroke, max_r) = generate_svg_stroke_path(&c.disk_r_hist, 0.0);
+            let fill = generate_svg_fill_path(&stroke);
+            w.set_perf_vector_stroke(SharedString::from(stroke));
+            w.set_perf_vector_fill(SharedString::from(fill));
+            w.set_perf_vector_has_kernel(false);
+            w.set_perf_vector_color(Color::from_rgb_u8(34, 229, 139));
+            w.set_perf_vector_fill_color(Color::from_argb_u8(40, 34, 229, 139));
+            w.set_perf_vector_max_label(SharedString::from(format!("{:.1} MB/s", max_r)));
+            w.set_perf_vector_min_label(SharedString::from("0 MB/s"));
+            w.set_perf_vector_current_val(SharedString::from(format!("{}/s", format_bytes(disk_r as u64))));
+
             w.set_perf_has_secondary_graph(true);
-            w.set_perf_sec_graph_label(SharedString::from("Disk Write Throughput (MB/s)"));
+            w.set_perf_sec_graph_label(SharedString::from("Disk Write Throughput"));
             w.set_perf_sec_graph_right(SharedString::from(format!(
                 "R {}/s · W {}/s",
                 format_bytes(disk_r as u64),
                 format_bytes(disk_w as u64)
             )));
-            w.set_perf_secondary_graph_img(render_single_area_graph(
-                900,
-                64,
-                &c.disk_w_hist,
-                0.0,
-                [34, 229, 139],
-                [12, 32, 22],
-                c.settings.show_graph_grid,
-            ));
+            let (sec_stroke, max_w) = generate_svg_stroke_path(&c.disk_w_hist, 0.0);
+            let sec_fill = generate_svg_fill_path(&sec_stroke);
+            w.set_perf_sec_vector_stroke(SharedString::from(sec_stroke));
+            w.set_perf_sec_vector_fill(SharedString::from(sec_fill));
+            w.set_perf_sec_vector_color(Color::from_rgb_u8(54, 197, 255));
+            w.set_perf_sec_vector_fill_color(Color::from_argb_u8(40, 54, 197, 255));
+            w.set_perf_sec_vector_max_label(SharedString::from(format!("{:.1} MB/s", max_w)));
+            w.set_perf_sec_vector_min_label(SharedString::from("0 MB/s"));
+            w.set_perf_sec_vector_current_val(SharedString::from(format!("{}/s", format_bytes(disk_w as u64))));
         }
         3 => {
             // Network Detail View
@@ -4528,32 +4953,34 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
                 ((rx + tx) / (33.3 * 1024.0 * 1024.0)).clamp(0.03, 1.0),
                 [25, 181, 254],
             ));
-            w.set_perf_main_graph_label(SharedString::from("Receive Throughput (KB/s)"));
-            w.set_perf_main_graph_img(render_single_area_graph(
-                900,
-                220,
-                &c.net_rx_hist,
-                0.0,
-                [25, 181, 254],
-                [12, 26, 40],
-                c.settings.show_graph_grid,
-            ));
+            w.set_perf_main_graph_label(SharedString::from("Receive Throughput"));
+            let (stroke, max_rx) = generate_svg_stroke_path(&c.net_rx_hist, 0.0);
+            let fill = generate_svg_fill_path(&stroke);
+            w.set_perf_vector_stroke(SharedString::from(stroke));
+            w.set_perf_vector_fill(SharedString::from(fill));
+            w.set_perf_vector_has_kernel(false);
+            w.set_perf_vector_color(Color::from_rgb_u8(25, 181, 254));
+            w.set_perf_vector_fill_color(Color::from_argb_u8(40, 25, 181, 254));
+            w.set_perf_vector_max_label(SharedString::from(format!("{:.1} KB/s", max_rx)));
+            w.set_perf_vector_min_label(SharedString::from("0 KB/s"));
+            w.set_perf_vector_current_val(SharedString::from(format!("{}/s", format_bytes(rx as u64))));
+
             w.set_perf_has_secondary_graph(true);
-            w.set_perf_sec_graph_label(SharedString::from("Send Throughput (KB/s)"));
+            w.set_perf_sec_graph_label(SharedString::from("Send Throughput"));
             w.set_perf_sec_graph_right(SharedString::from(format!(
                 "RX {}/s · TX {}/s",
                 format_bytes(rx as u64),
                 format_bytes(tx as u64)
             )));
-            w.set_perf_secondary_graph_img(render_single_area_graph(
-                900,
-                64,
-                &c.net_tx_hist,
-                0.0,
-                [25, 181, 254],
-                [12, 26, 40],
-                c.settings.show_graph_grid,
-            ));
+            let (sec_stroke, max_tx) = generate_svg_stroke_path(&c.net_tx_hist, 0.0);
+            let sec_fill = generate_svg_fill_path(&sec_stroke);
+            w.set_perf_sec_vector_stroke(SharedString::from(sec_stroke));
+            w.set_perf_sec_vector_fill(SharedString::from(sec_fill));
+            w.set_perf_sec_vector_color(Color::from_rgb_u8(184, 77, 255));
+            w.set_perf_sec_vector_fill_color(Color::from_argb_u8(40, 184, 77, 255));
+            w.set_perf_sec_vector_max_label(SharedString::from(format!("{:.1} KB/s", max_tx)));
+            w.set_perf_sec_vector_min_label(SharedString::from("0 KB/s"));
+            w.set_perf_sec_vector_current_val(SharedString::from(format!("{}/s", format_bytes(tx as u64))));
         }
         5 => {
             // Energy Detail View
@@ -4574,15 +5001,16 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             ));
             w.set_perf_has_secondary_graph(false);
             w.set_perf_main_graph_label(SharedString::from("Power Draw History"));
-            w.set_perf_main_graph_img(render_single_area_graph(
-                900,
-                280,
-                &c.power_hist,
-                100.0,
-                [245, 200, 35],
-                [36, 30, 12],
-                c.settings.show_graph_grid,
-            ));
+            let (stroke, max_pwr) = generate_svg_stroke_path(&c.power_hist, 0.0);
+            let fill = generate_svg_fill_path(&stroke);
+            w.set_perf_vector_stroke(SharedString::from(stroke));
+            w.set_perf_vector_fill(SharedString::from(fill));
+            w.set_perf_vector_has_kernel(false);
+            w.set_perf_vector_color(Color::from_rgb_u8(245, 200, 35));
+            w.set_perf_vector_fill_color(Color::from_argb_u8(40, 245, 200, 35));
+            w.set_perf_vector_max_label(SharedString::from(format!("{:.0} W", max_pwr.max(100.0))));
+            w.set_perf_vector_min_label(SharedString::from("0 W"));
+            w.set_perf_vector_current_val(SharedString::from(format!("{:.1} W", pwr)));
         }
         _ => {
             // Thermals Detail View
@@ -4599,15 +5027,16 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             ));
             w.set_perf_has_secondary_graph(false);
             w.set_perf_main_graph_label(SharedString::from("Temperature History (°C)"));
-            w.set_perf_main_graph_img(render_single_area_graph(
-                900,
-                280,
-                &c.cpu_temp_hist,
-                100.0,
-                [245, 150, 35],
-                [38, 24, 12],
-                c.settings.show_graph_grid,
-            ));
+            let (stroke, _) = generate_svg_stroke_path(&c.cpu_temp_hist, 100.0);
+            let fill = generate_svg_fill_path(&stroke);
+            w.set_perf_vector_stroke(SharedString::from(stroke));
+            w.set_perf_vector_fill(SharedString::from(fill));
+            w.set_perf_vector_has_kernel(false);
+            w.set_perf_vector_color(Color::from_rgb_u8(245, 150, 35));
+            w.set_perf_vector_fill_color(Color::from_argb_u8(40, 245, 150, 35));
+            w.set_perf_vector_max_label(SharedString::from("100 °C"));
+            w.set_perf_vector_min_label(SharedString::from("0 °C"));
+            w.set_perf_vector_current_val(SharedString::from(format!("{:.0} °C", temp)));
         }
     }
 }
@@ -5297,6 +5726,51 @@ fn render_3series_cpu_overview_graph(
     draw_series_curve(slice, w, h, util_q, 100.0, [34, 229, 139], true);
 
     Image::from_rgba8(buf)
+}
+
+/// Generates SVG path commands for a series mapped to a 1000x1000 viewport.
+/// Returns (svg_path_commands, calculated_max_value).
+fn generate_svg_stroke_path(data: &VecDeque<f64>, max_val: f64) -> (String, f64) {
+    if data.is_empty() {
+        return (String::new(), 1.0);
+    }
+    let n = data.len();
+    let effective_max = if max_val <= 0.0 {
+        let max_elem = data.iter().copied().fold(0.001f64, f64::max);
+        if max_elem < 1.0 {
+            1.0
+        } else if max_elem < 10.0 {
+            (max_elem * 1.2).ceil()
+        } else {
+            (max_elem * 1.15).ceil()
+        }
+    } else {
+        max_val
+    };
+
+    let scale_x = 1000.0 / ((n - 1).max(1) as f64);
+    let mut path = String::with_capacity(n * 16);
+
+    for (i, &val) in data.iter().enumerate() {
+        let x = ((i as f64) * scale_x).round();
+        let norm_y = (val / effective_max).clamp(0.0, 1.0);
+        let y = (1000.0 - norm_y * 1000.0).round();
+        use std::fmt::Write;
+        if i == 0 {
+            let _ = write!(path, "M {:.0} {:.0}", x, y);
+        } else {
+            let _ = write!(path, " L {:.0} {:.0}", x, y);
+        }
+    }
+    (path, effective_max)
+}
+
+/// Generates a closed SVG fill polygon from stroke commands down to the bottom (y=1000).
+fn generate_svg_fill_path(stroke_path: &str) -> String {
+    if stroke_path.is_empty() {
+        return String::new();
+    }
+    format!("{} L 1000 1000 L 0 1000 Z", stroke_path)
 }
 
 /// Renders a single-series area chart (used for Memory, GPU, Disk, Network, and left-nav sparklines).
