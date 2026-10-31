@@ -13,6 +13,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 slint::slint! {
+    import "../assets/fonts/DejaVuSansMono.ttf";
+    import "../assets/fonts/NotoSans-Regular.ttf";
     import { ScrollView, LineEdit } from "std-widgets.slint";
 
     export struct ProcRow {
@@ -123,6 +125,14 @@ slint::slint! {
         in-out property <length> font-size-xl: 22px;
         in-out property <length> row-height: 24px;
         in-out property <bool> show-grid: true;
+
+        // Visual Toolkit Style:
+        // 0 = Retro VFD / Hardware Terminal
+        // 1 = Fluent Design (Windows 11 Task Manager Mica & soft curves)
+        // 2 = KDE Plasma 6 Breeze (Qt Breeze frames, accents & clean tabs)
+        in-out property <int> ui-style: 0;
+        in-out property <length> card-radius: 6px;
+        in-out property <length> button-radius: 4px;
     }
 
     // Left Sidebar Navigation Item
@@ -132,20 +142,40 @@ slint::slint! {
         in property <bool> active: false;
         callback clicked();
 
-        height: 30px;
-        border-radius: 5px;
-        background: root.active ? Theme.nav-selected : (ta.has-hover ? #151b24 : transparent);
-        border-width: root.active ? 1px : 0px;
+        height: 32px;
+        border-radius: Theme.button-radius;
+        background: root.active ? Theme.nav-selected : (ta.has-hover ? Theme.menu-hover : transparent);
+        border-width: Theme.ui-style == 2 ? (root.active ? 1px : 0px) : (root.active ? 1px : 0px);
         border-color: Theme.nav-border;
 
+        // Windows 11 Fluent Active Indicator: 3px rounded vertical accent pill on the left!
+        if Theme.ui-style == 1 && root.active : Rectangle {
+            x: 0px;
+            y: 7px;
+            width: 3px;
+            height: 18px;
+            border-radius: 1.5px;
+            background: Theme.accent-primary;
+        }
+
+        // KDE Breeze Active Indicator: Breeze Blue left accent line
+        if Theme.ui-style == 2 && root.active : Rectangle {
+            x: 0px;
+            y: 0px;
+            width: 3px;
+            height: parent.height;
+            background: Theme.accent-primary;
+        }
+
         HorizontalLayout {
-            padding-left: 10px;
+            padding-left: Theme.ui-style == 1 ? 12px : 10px;
             padding-right: 10px;
             spacing: 10px;
             Text {
                 width: 18px;
                 text: root.icon;
-                color: root.active ? #4db8ff : Theme.text-dim;
+                color: root.active ? Theme.accent-primary : Theme.text-dim;
+                font-family: Theme.font-ui;
                 font-size: Theme.font-size-base;
                 vertical-alignment: center;
                 horizontal-alignment: center;
@@ -153,6 +183,7 @@ slint::slint! {
             Text {
                 text: root.label;
                 color: root.active ? #ffffff : Theme.text-main;
+                font-family: Theme.font-ui;
                 font-size: Theme.font-size-base;
                 font-weight: root.active ? 600 : 400;
                 vertical-alignment: center;
@@ -164,36 +195,58 @@ slint::slint! {
         }
     }
 
-    // Recessed VFD 14-segment style header banner used on Summary cards
+    // Recessed VFD / Section Header banner used on Summary cards
     component VfdBanner inherits Rectangle {
         in property <string> left-text;
         in property <string> right-text: "";
         height: 30px;
-        background: #050a0c;
+        background: Theme.ui-style == 1 ? #ffffff08 : (Theme.ui-style == 2 ? Theme.bg-header : #050a0c);
         border-width: 1px;
-        border-color: #152b34;
-        border-radius: 4px;
+        border-color: Theme.ui-style == 1 ? Theme.border : (Theme.ui-style == 2 ? Theme.border : #152b34);
+        border-radius: Theme.card-radius;
+
+        // KDE Breeze Accent Top Line
+        if Theme.ui-style == 2 : Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: 2px;
+            background: Theme.accent-primary;
+        }
 
         HorizontalLayout {
-            padding-left: 10px;
-            padding-right: 10px;
+            padding-left: 12px;
+            padding-right: 12px;
             alignment: space-between;
-            Text {
-                text: root.left-text;
-                color: #36e8ff;
-                font-family: Theme.font-family;
-                font-size: 15px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
-                vertical-alignment: center;
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                // Fluent Modern accent dot
+                if Theme.ui-style == 1 : Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.accent-primary;
+                    y: (parent.height - self.height) / 2;
+                }
+                Text {
+                    text: root.left-text;
+                    color: Theme.ui-style == 0 ? #36e8ff : Theme.text-main;
+                    font-family: Theme.ui-style == 0 ? Theme.font-family : Theme.font-ui;
+                    font-size: Theme.ui-style == 0 ? 15px : 13px;
+                    font-weight: 700;
+                    letter-spacing: Theme.ui-style == 0 ? 1.5px : 0.5px;
+                    vertical-alignment: center;
+                }
             }
             if root.right-text != "" : Text {
                 text: root.right-text;
-                color: #36e8ff;
-                font-family: Theme.font-family;
-                font-size: 15px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
+                color: Theme.ui-style == 0 ? #36e8ff : Theme.text-dim;
+                font-family: Theme.ui-style == 0 ? Theme.font-family : Theme.font-ui;
+                font-size: Theme.ui-style == 0 ? 15px : 12px;
+                font-weight: Theme.ui-style == 0 ? 700 : 500;
+                letter-spacing: Theme.ui-style == 0 ? 1.5px : 0px;
                 vertical-alignment: center;
             }
         }
@@ -202,23 +255,28 @@ slint::slint! {
     component ActionBtn inherits Rectangle {
         in property <string> label;
         in property <color> stroke-col: Theme.border;
+        in property <bool> filled: false;
         callback clicked();
 
-        height: 28px;
-        min-width: 78px;
-        border-radius: 5px;
-        background: ta.pressed ? #1c2530 : (ta.has-hover ? #161d26 : #10151c);
+        height: 26px;
+        min-width: 26px;
+        border-radius: Theme.button-radius;
+        background: root.filled ? Theme.accent-primary : (ta.pressed ? Theme.nav-selected : (ta.has-hover ? Theme.menu-hover : Theme.bg-card));
         border-width: 1px;
-        border-color: ta.has-hover ? Theme.accent-secondary : root.stroke-col;
+        border-color: root.filled ? Theme.accent-primary : (ta.has-hover ? Theme.accent-secondary : root.stroke-col);
+        drop-shadow-blur: Theme.ui-style == 1 && ta.has-hover ? 4px : 0px;
+        drop-shadow-color: #00000044;
 
         HorizontalLayout {
-            padding-left: 10px;
-            padding-right: 10px;
+            padding-left: 8px;
+            padding-right: 8px;
             alignment: center;
             Text {
                 text: root.label;
-                color: Theme.text-main;
-                font-size: Theme.font-size-base;
+                color: root.filled ? #000000 : (ta.has-hover ? #ffffff : Theme.text-main);
+                font-family: Theme.font-ui;
+                font-size: Theme.font-size-sm;
+                font-weight: 500;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -548,6 +606,21 @@ slint::slint! {
         in-out property <bool> custom-compact-rows: false;
         in-out property <bool> custom-show-grid: true;
 
+        // Context menus state
+        in-out property <bool> proc-context-open: false;
+        in-out property <int> proc-context-pid: 0;
+        in-out property <string> proc-context-name: "";
+        in-out property <string> proc-context-cmdline: "";
+        in-out property <length> proc-context-x: 200px;
+        in-out property <length> proc-context-y: 200px;
+
+        in-out property <bool> cpu-context-open: false;
+        in-out property <length> cpu-context-x: 200px;
+        in-out property <length> cpu-context-y: 200px;
+
+        // Root / Elevation status
+        in-out property <bool> is-root-user: false;
+
         // Callbacks
         callback select-tab(int, string);
         callback select-perf-item(int);
@@ -571,49 +644,77 @@ slint::slint! {
         callback reset-settings();
         callback quit-app();
         callback toggle-flight-recording(bool);
+        callback copy-to-clipboard(string);
+        callback relaunch-as-root();
+        callback toggle-windows-default-taskmgr(bool);
 
         VerticalLayout {
             // 1. Top Menu Strip ("File  Edit  View  Performance  Help")
             Rectangle {
                 height: 28px;
-                background: #0d1015;
+                background: Theme.bg-header;
                 border-width: 1px;
-                border-color: #171d26;
+                border-color: Theme.border;
                 HorizontalLayout {
                     padding-left: 6px;
+                    padding-right: 12px;
                     padding-top: 2px;
                     padding-bottom: 2px;
-                    spacing: 4px;
-                    alignment: start;
-                    MenuBarButton {
-                        label: "File";
-                        active: root.open-menu == 1;
-                        clicked => { root.open-menu = root.open-menu == 1 ? 0 : 1; }
-                        hovered => { if (root.open-menu != 0) { root.open-menu = 1; } }
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        alignment: start;
+                        MenuBarButton {
+                            label: "File";
+                            active: root.open-menu == 1;
+                            clicked => { root.open-menu = root.open-menu == 1 ? 0 : 1; }
+                            hovered => { if (root.open-menu != 0) { root.open-menu = 1; } }
+                        }
+                        MenuBarButton {
+                            label: "Edit";
+                            active: root.open-menu == 2;
+                            clicked => { root.open-menu = root.open-menu == 2 ? 0 : 2; }
+                            hovered => { if (root.open-menu != 0) { root.open-menu = 2; } }
+                        }
+                        MenuBarButton {
+                            label: "View";
+                            active: root.open-menu == 3;
+                            clicked => { root.open-menu = root.open-menu == 3 ? 0 : 3; }
+                            hovered => { if (root.open-menu != 0) { root.open-menu = 3; } }
+                        }
+                        MenuBarButton {
+                            label: "Performance";
+                            active: root.open-menu == 4;
+                            clicked => { root.open-menu = root.open-menu == 4 ? 0 : 4; }
+                            hovered => { if (root.open-menu != 0) { root.open-menu = 4; } }
+                        }
+                        MenuBarButton {
+                            label: "Help";
+                            active: root.open-menu == 5;
+                            clicked => { root.open-menu = root.open-menu == 5 ? 0 : 5; }
+                            hovered => { if (root.open-menu != 0) { root.open-menu = 5; } }
+                        }
                     }
-                    MenuBarButton {
-                        label: "Edit";
-                        active: root.open-menu == 2;
-                        clicked => { root.open-menu = root.open-menu == 2 ? 0 : 2; }
-                        hovered => { if (root.open-menu != 0) { root.open-menu = 2; } }
-                    }
-                    MenuBarButton {
-                        label: "View";
-                        active: root.open-menu == 3;
-                        clicked => { root.open-menu = root.open-menu == 3 ? 0 : 3; }
-                        hovered => { if (root.open-menu != 0) { root.open-menu = 3; } }
-                    }
-                    MenuBarButton {
-                        label: "Performance";
-                        active: root.open-menu == 4;
-                        clicked => { root.open-menu = root.open-menu == 4 ? 0 : 4; }
-                        hovered => { if (root.open-menu != 0) { root.open-menu = 4; } }
-                    }
-                    MenuBarButton {
-                        label: "Help";
-                        active: root.open-menu == 5;
-                        clicked => { root.open-menu = root.open-menu == 5 ? 0 : 5; }
-                        hovered => { if (root.open-menu != 0) { root.open-menu = 5; } }
+
+                    if root.is-root-user : Rectangle {
+                        height: 20px;
+                        background: #3d1414;
+                        border-width: 1px;
+                        border-color: Theme.accent-danger;
+                        border-radius: 4px;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            Text {
+                                text: "🛡️ ROOT ELEVATED";
+                                color: #ff6b6b;
+                                font-family: Theme.font-ui;
+                                font-size: 10px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
                 }
             }
@@ -1217,44 +1318,62 @@ slint::slint! {
                             }
 
                             // Main Chart Area (Per-Core Grid when CPU Expanded, else Large Chart)
-                            if root.perf-selected-idx == 0 && root.perf-cpu-expanded : Rectangle {
+                            Rectangle {
                                 vertical-stretch: 1;
-                                background: #06080b;
+                                background: Theme.bg-card;
                                 border-width: 1px;
-                                border-color: #16222f;
-                                border-radius: 6px;
-                                Image {
+                                border-color: Theme.border;
+                                border-radius: Theme.card-radius;
+                                clip: true;
+
+                                // Interactive Right-Click Context Menu & Double-Click Toggle
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    pointer-event(event) => {
+                                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                                            root.cpu-context-x = 520px;
+                                            root.cpu-context-y = 160px;
+                                            root.cpu-context-open = true;
+                                        }
+                                    }
+                                    double-clicked => {
+                                        if (root.perf-selected-idx == 0) {
+                                            root.perf-cpu-expanded = !root.perf-cpu-expanded;
+                                            root.refresh-now();
+                                        }
+                                    }
+                                }
+
+                                if root.perf-selected-idx == 0 && root.perf-cpu-expanded : Image {
                                     width: 100%;
                                     height: 100%;
                                     source: root.perf-cpu-cores-grid-img;
                                     image-fit: fill;
                                 }
-                            }
 
-                            if !(root.perf-selected-idx == 0 && root.perf-cpu-expanded) : VerticalLayout {
-                                vertical-stretch: 1;
-                                spacing: 8px;
-
-                                Image {
-                                    vertical-stretch: 3;
-                                    width: 100%;
-                                    source: root.perf-main-graph-img;
-                                    image-fit: fill;
-                                }
-
-                                if root.perf-has-secondary-graph : VerticalLayout {
-                                    vertical-stretch: 1;
-                                    spacing: 4px;
-                                    HorizontalLayout {
-                                        alignment: space-between;
-                                        Text { text: root.perf-sec-graph-label; color: Theme.text-main; font-size: Theme.font-size-base; }
-                                        Text { text: root.perf-sec-graph-right; color: Theme.text-main; font-size: Theme.font-size-base; }
-                                    }
+                                if !(root.perf-selected-idx == 0 && root.perf-cpu-expanded) : VerticalLayout {
+                                    spacing: 6px;
+                                    padding: 4px;
                                     Image {
-                                        vertical-stretch: 1;
+                                        vertical-stretch: 3;
                                         width: 100%;
-                                        source: root.perf-secondary-graph-img;
+                                        source: root.perf-main-graph-img;
                                         image-fit: fill;
+                                    }
+                                    if root.perf-has-secondary-graph : VerticalLayout {
+                                        vertical-stretch: 1;
+                                        spacing: 2px;
+                                        HorizontalLayout {
+                                            alignment: space-between;
+                                            Text { text: root.perf-sec-graph-label; color: Theme.text-main; font-size: Theme.font-size-base; font-family: Theme.font-ui; }
+                                            Text { text: root.perf-sec-graph-right; color: Theme.text-main; font-size: Theme.font-size-base; font-family: Theme.font-ui; }
+                                        }
+                                        Image {
+                                            vertical-stretch: 1;
+                                            width: 100%;
+                                            source: root.perf-secondary-graph-img;
+                                            image-fit: fill;
+                                        }
                                     }
                                 }
                             }
@@ -1410,7 +1529,26 @@ slint::slint! {
                                         spacing: 2px;
                                         for p[idx] in root.processes : Rectangle {
                                             height: Theme.row-height;
-                                            background: mod(idx, 2) == 0 ? transparent : Theme.row-alt;
+                                            background: row-ta.has-hover ? Theme.menu-hover : (mod(idx, 2) == 0 ? transparent : Theme.row-alt);
+                                            border-radius: Theme.button-radius;
+
+                                            row-ta := TouchArea {
+                                                mouse-cursor: pointer;
+                                                pointer-event(event) => {
+                                                    if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                                                        root.proc-context-pid = p.pid;
+                                                        root.proc-context-name = p.name;
+                                                        root.proc-context-cmdline = p.cmdline;
+                                                        root.proc-context-x = 480px;
+                                                        root.proc-context-y = 240px;
+                                                        root.proc-context-open = true;
+                                                    }
+                                                }
+                                                double-clicked => {
+                                                    root.inspect-process(p.pid);
+                                                }
+                                            }
+
                                             HorizontalLayout {
                                                 padding-left: 6px;
                                                 padding-right: 6px;
@@ -1428,12 +1566,18 @@ slint::slint! {
                                                     spacing: 4px;
                                                     alignment: start;
                                                     ActionBtn { label: "Inspect"; clicked => { root.inspect-process(p.pid); } }
-                                                    ActionBtn { label: "Term"; stroke-col: Theme.accent-warn; clicked => { root.signal-process(p.pid, "TERM"); } }
-                                                    ActionBtn { label: "Kill"; stroke-col: Theme.accent-danger; clicked => { root.signal-process(p.pid, "KILL"); } }
-                                                    ActionBtn { label: "Stop"; clicked => { root.signal-process(p.pid, "STOP"); } }
-                                                    ActionBtn { label: "Cont"; clicked => { root.signal-process(p.pid, "CONT"); } }
-                                                    ActionBtn { label: "Nice-"; clicked => { root.signal-process(p.pid, "NICE_DEC"); } }
-                                                    ActionBtn { label: "Nice+"; clicked => { root.signal-process(p.pid, "NICE_INC"); } }
+                                                    ActionBtn { label: "End Task"; stroke-col: Theme.accent-danger; clicked => { root.signal-process(p.pid, "TERM"); } }
+                                                    ActionBtn {
+                                                        label: "⋮";
+                                                        clicked => {
+                                                            root.proc-context-pid = p.pid;
+                                                            root.proc-context-name = p.name;
+                                                            root.proc-context-cmdline = p.cmdline;
+                                                            root.proc-context-x = 550px;
+                                                            root.proc-context-y = 250px;
+                                                            root.proc-context-open = true;
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -2303,6 +2447,17 @@ slint::slint! {
             }
             MenuDivider {}
             MenuDropdownItem {
+                icon: "🛡️";
+                label: root.is-root-user ? "Running Elevated as Root" : "Relaunch as Root (pkexec)";
+                triggered => { root.open-menu = 0; root.relaunch-as-root(); }
+            }
+            MenuDropdownItem {
+                icon: "🪟";
+                label: "Set as Default Task Manager (Win)";
+                triggered => { root.open-menu = 0; root.toggle-windows-default-taskmgr(true); }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
                 icon: "⏻";
                 label: "Exit PulseDeck";
                 shortcut: "Ctrl+Q";
@@ -2561,6 +2716,218 @@ slint::slint! {
                 }
             }
         }
+
+        // ====================================================================
+        // FLOATING RIGHT-CLICK CONTEXT MENUS (Process & CPU Graph)
+        // ====================================================================
+
+        // Process Context Menu Backdrop
+        if root.proc-context-open : TouchArea {
+            x: 0px;
+            y: 0px;
+            width: root.width;
+            height: root.height;
+            clicked => { root.proc-context-open = false; }
+        }
+
+        // Process Context Menu
+        if root.proc-context-open : MenuDropdownContainer {
+            x: clamp(root.proc-context-x, 10px, root.width - 270px);
+            y: clamp(root.proc-context-y, 32px, root.height - 360px);
+            menu-width: 260px;
+
+            Rectangle {
+                height: 24px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    alignment: space-between;
+                    Text {
+                        text: "PID " + root.proc-context-pid + " · " + root.proc-context-name;
+                        color: Theme.accent-secondary;
+                        font-family: Theme.font-ui;
+                        font-size: 11px;
+                        font-weight: 700;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "🔍";
+                label: "Inspect Process Details";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.inspect-process(root.proc-context-pid);
+                }
+            }
+            MenuDropdownItem {
+                icon: "⏹";
+                label: "End Task (SIGTERM)";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.signal-process(root.proc-context-pid, "TERM");
+                }
+            }
+            MenuDropdownItem {
+                icon: "💥";
+                label: "Force Kill (SIGKILL)";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.signal-process(root.proc-context-pid, "KILL");
+                }
+            }
+            MenuDropdownItem {
+                icon: "⏸";
+                label: "Pause Process (SIGSTOP)";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.signal-process(root.proc-context-pid, "STOP");
+                }
+            }
+            MenuDropdownItem {
+                icon: "▶";
+                label: "Resume Process (SIGCONT)";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.signal-process(root.proc-context-pid, "CONT");
+                }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "🔺";
+                label: "Higher Priority (Nice -5)";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.signal-process(root.proc-context-pid, "NICE_DEC");
+                }
+            }
+            MenuDropdownItem {
+                icon: "🔻";
+                label: "Lower Priority (Nice +5)";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.signal-process(root.proc-context-pid, "NICE_INC");
+                }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "📋";
+                label: "Copy Process PID";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.copy-to-clipboard(root.proc-context-pid);
+                }
+            }
+            MenuDropdownItem {
+                icon: "📋";
+                label: "Copy Process Name";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.copy-to-clipboard(root.proc-context-name);
+                }
+            }
+            MenuDropdownItem {
+                icon: "📋";
+                label: "Copy Command Line";
+                triggered => {
+                    root.proc-context-open = false;
+                    root.copy-to-clipboard(root.proc-context-cmdline);
+                }
+            }
+        }
+
+        // CPU Graph Context Menu Backdrop
+        if root.cpu-context-open : TouchArea {
+            x: 0px;
+            y: 0px;
+            width: root.width;
+            height: root.height;
+            clicked => { root.cpu-context-open = false; }
+        }
+
+        // CPU Graph Context Menu
+        if root.cpu-context-open : MenuDropdownContainer {
+            x: clamp(root.cpu-context-x, 10px, root.width - 290px);
+            y: clamp(root.cpu-context-y, 32px, root.height - 290px);
+            menu-width: 280px;
+
+            Rectangle {
+                height: 24px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    alignment: space-between;
+                    Text {
+                        text: "Change graph to";
+                        color: Theme.accent-primary;
+                        font-family: Theme.font-ui;
+                        font-size: 11px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "📈";
+                label: "Overall utilization";
+                shortcut: !root.perf-cpu-expanded ? "✓" : "";
+                triggered => {
+                    root.cpu-context-open = false;
+                    root.perf-cpu-expanded = false;
+                    root.refresh-now();
+                }
+            }
+            MenuDropdownItem {
+                icon: "⊞";
+                label: "Logical processors";
+                shortcut: root.perf-cpu-expanded ? "✓" : "";
+                triggered => {
+                    root.cpu-context-open = false;
+                    root.perf-cpu-expanded = true;
+                    root.refresh-now();
+                }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "▦";
+                label: "Graph Gridlines";
+                shortcut: root.custom-show-grid ? "ON" : "OFF";
+                triggered => {
+                    root.cpu-context-open = false;
+                    root.toggle-graph-grid();
+                }
+            }
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Update Speed: High (250 ms)";
+                shortcut: root.custom-refresh-ms == 250 ? "✓" : "";
+                triggered => {
+                    root.cpu-context-open = false;
+                    root.set-refresh-rate(250);
+                }
+            }
+            MenuDropdownItem {
+                icon: "⏱";
+                label: "Update Speed: Normal (1000 ms)";
+                shortcut: root.custom-refresh-ms == 1000 ? "✓" : "";
+                triggered => {
+                    root.cpu-context-open = false;
+                    root.set-refresh-rate(1000);
+                }
+            }
+            MenuDivider {}
+            MenuDropdownItem {
+                icon: "📋";
+                label: "Copy Graph Summary";
+                triggered => {
+                    root.cpu-context-open = false;
+                    root.copy-to-clipboard(root.perf-kv1-k + ": " + root.perf-kv1-v + " | " + root.perf-kv2-k + ": " + root.perf-kv2-v);
+                }
+            }
+        }
     }
 }
 
@@ -2646,6 +3013,11 @@ impl GuiController {
     }
 
     fn push_history_from_last_snap(&mut self) {
+        // Refresh CPU governor & driver in real-time
+        let (_base, drv, gov) = read_cpufreq_meta();
+        self.cpu_governor = gov;
+        self.cpu_driver = drv;
+
         let snap = &self.last_snap;
         push_ring(&mut self.cpu_hist, snap.cpu.total_pct);
         push_ring(&mut self.cpu_kern_hist, snap.cpu.system_pct);
@@ -3225,7 +3597,172 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         });
     }
 
+    win.on_copy_to_clipboard(|text| {
+        copy_text_to_clipboard(text.as_str());
+    });
+
+    {
+        let win_weak = win.as_weak();
+        win.on_relaunch_as_root(move || {
+            if let Some(w) = win_weak.upgrade() {
+                match relaunch_as_root() {
+                    Ok(()) => {}
+                    Err(e) => {
+                        w.set_status_message(SharedString::from(format!("Elevate error: {}", e)));
+                    }
+                }
+            }
+        });
+    }
+
+    {
+        let win_weak = win.as_weak();
+        win.on_toggle_windows_default_taskmgr(move |enable| {
+            if let Some(w) = win_weak.upgrade() {
+                match toggle_windows_default_taskmgr(enable) {
+                    Ok(msg) => {
+                        w.set_status_message(SharedString::from(msg));
+                    }
+                    Err(e) => {
+                        w.set_status_message(SharedString::from(format!("TaskMgr error: {}", e)));
+                    }
+                }
+            }
+        });
+    }
+
+    win.set_is_root_user(is_elevated_root());
+
     win.run().map_err(|e| anyhow::anyhow!("Slint event loop error: {}", e))
+}
+
+fn is_elevated_root() -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::geteuid() == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
+fn relaunch_as_root() -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        let exe = std::env::current_exe()?;
+        let args: Vec<String> = std::env::args().skip(1).collect();
+
+        let pkexec_exists = std::process::Command::new("which")
+            .arg("pkexec")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        let mut cmd = if pkexec_exists {
+            let mut c = std::process::Command::new("pkexec");
+            if let Ok(d) = std::env::var("DISPLAY") {
+                c.env("DISPLAY", d);
+            }
+            if let Ok(w) = std::env::var("WAYLAND_DISPLAY") {
+                c.env("WAYLAND_DISPLAY", w);
+            }
+            if let Ok(x) = std::env::var("XAUTHORITY") {
+                c.env("XAUTHORITY", x);
+            }
+            c.arg(&exe);
+            c.args(&args);
+            c
+        } else {
+            let mut c = std::process::Command::new("sudo");
+            c.arg("-E");
+            c.arg(&exe);
+            c.args(&args);
+            c
+        };
+
+        cmd.spawn()?;
+        std::process::exit(0);
+    }
+    #[cfg(not(unix))]
+    {
+        anyhow::bail!("Relaunch as root is only supported on Linux/Unix");
+    }
+}
+
+fn toggle_windows_default_taskmgr(enable: bool) -> anyhow::Result<String> {
+    #[cfg(target_os = "windows")]
+    {
+        let key = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe";
+        if enable {
+            let exe = std::env::current_exe()?;
+            let exe_str = exe.to_string_lossy();
+            let status = std::process::Command::new("reg")
+                .args(["add", key, "/v", "Debugger", "/t", "REG_SZ", "/d", &exe_str, "/f"])
+                .status()?;
+            if status.success() {
+                Ok("PulseDeck set as default Windows Task Manager.".to_string())
+            } else {
+                anyhow::bail!("Registry write failed. Please run PulseDeck as Administrator.")
+            }
+        } else {
+            let status = std::process::Command::new("reg")
+                .args(["delete", key, "/v", "Debugger", "/f"])
+                .status()?;
+            if status.success() {
+                Ok("Restored standard Windows Task Manager.".to_string())
+            } else {
+                anyhow::bail!("Failed to remove Windows registry entry.")
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enable;
+        anyhow::bail!("Default Task Manager replacement is a Windows-only feature.");
+    }
+}
+
+fn copy_text_to_clipboard(text: &str) {
+    #[cfg(unix)]
+    {
+        if let Ok(mut child) = std::process::Command::new("wl-copy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            use std::io::Write;
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+            return;
+        }
+        if let Ok(mut child) = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            use std::io::Write;
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+            return;
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Write;
+        if let Ok(mut child) = std::process::Command::new("clip")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+        }
+    }
 }
 
 fn sync_all_models(w: &MainWindow, c: &GuiController) {
@@ -4471,6 +5008,20 @@ fn apply_settings_to_window(w: &MainWindow, s: &AppSettings) {
     t.set_menu_bg(blend(s.theme.bg_panel, s.theme.bg_card, 0.70));
     t.set_menu_border(blend(s.theme.border, s.theme.accent_primary, 0.35));
     t.set_menu_hover(blend(s.theme.bg_card, s.theme.accent_primary, 0.20));
+
+    if s.theme.preset_name.contains("Fluent") {
+        t.set_ui_style(1);
+        t.set_card_radius(8.0);
+        t.set_button_radius(6.0);
+    } else if s.theme.preset_name.contains("KDE") || s.theme.preset_name.contains("Breeze") {
+        t.set_ui_style(2);
+        t.set_card_radius(4.0);
+        t.set_button_radius(3.0);
+    } else {
+        t.set_ui_style(0);
+        t.set_card_radius(6.0);
+        t.set_button_radius(4.0);
+    }
 
     let base = s.base_font_size.clamp(9, 22) as f32;
     t.set_font_size_sm((base - 1.0).max(9.0));

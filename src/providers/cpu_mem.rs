@@ -592,7 +592,7 @@ fn read_core_temperatures() -> BTreeMap<usize, f64> {
                 continue;
             };
             let temp_c = milli_c / 1000.0;
-            if !(0.0..=150.0).contains(&temp_c) {
+            if temp_c <= 1.0 || temp_c > 140.0 {
                 continue;
             }
             let label = fs::read_to_string(path.join(format!("temp{}_label", idx)))
@@ -609,6 +609,35 @@ fn read_core_temperatures() -> BTreeMap<usize, f64> {
                 || idx == 1
             {
                 map.entry(999).or_insert(temp_c);
+            }
+        }
+    }
+    // Fallback: check /sys/class/thermal/thermal_zone* if no CPU package temp was found
+    if !map.contains_key(&999) {
+        if let Ok(tz_entries) = fs::read_dir("/sys/class/thermal") {
+            for entry in tz_entries.flatten() {
+                let p = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("thermal_zone") {
+                    let z_type = fs::read_to_string(p.join("type"))
+                        .unwrap_or_default()
+                        .to_lowercase();
+                    if z_type.contains("cpu")
+                        || z_type.contains("x86_pkg_temp")
+                        || z_type.contains("acpitz")
+                        || z_type.contains("soc")
+                    {
+                        if let Ok(raw_s) = fs::read_to_string(p.join("temp")) {
+                            if let Ok(milli_c) = raw_s.trim().parse::<f64>() {
+                                let c = milli_c / 1000.0;
+                                if c > 1.0 && c <= 140.0 {
+                                    map.insert(999, c);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

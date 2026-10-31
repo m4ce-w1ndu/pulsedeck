@@ -370,12 +370,19 @@ impl SensorCollector {
                     if let Ok(raw_s) = fs::read_to_string(path.join(format!("temp{}_input", i))) {
                         if let Ok(val) = raw_s.trim().parse::<f64>() {
                             let c = val / 1000.0;
-                            if (-20.0..=150.0).contains(&c) {
-                                let label =
+                            let is_fault = fs::read_to_string(path.join(format!("temp{}_fault", i)))
+                                .map(|s| s.trim() == "1")
+                                .unwrap_or(false);
+                            // Filter out 0.0°C or inactive/disconnected probes (common on ThinkPad / ACPI unused channels)
+                            if !is_fault && c > 1.0 && c <= 140.0 {
+                                let mut label =
                                     fs::read_to_string(path.join(format!("temp{}_label", i)))
-                                        .unwrap_or_else(|_| format!("Temperature #{}", i))
+                                        .unwrap_or_default()
                                         .trim()
                                         .to_string();
+                                if label.is_empty() {
+                                    label = format!("Sensor Temp #{}", i);
+                                }
                                 let id = format!("{}:temp{}", hwmon_id, i);
                                 readings.push(self.record_reading(
                                     &id,
