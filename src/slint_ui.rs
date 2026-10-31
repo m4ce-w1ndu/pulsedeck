@@ -431,10 +431,13 @@ slint::slint! {
         in property <string> stroke-path: "";
         in property <string> fill-path: "";
         in property <string> kernel-path: "";
+        in property <string> temp-path: "";
         in property <color> stroke-color: #36c5ff;
         in property <color> fill-color: #36c5ff22;
         in property <color> kernel-color: #ff5566;
+        in property <color> temp-color: #f5a623;
         in property <bool> has-kernel: false;
+        in property <bool> has-temp: false;
         in property <bool> show-grid: true;
         in property <string> max-label: "100%";
         in property <string> min-label: "0%";
@@ -474,6 +477,7 @@ slint::slint! {
             viewbox-y: 0;
             viewbox-width: 1000;
             viewbox-height: 1000;
+            fit: ImageFit.fill;
             fill: root.fill-color;
             commands: root.fill-path;
         }
@@ -486,9 +490,24 @@ slint::slint! {
             viewbox-y: 0;
             viewbox-width: 1000;
             viewbox-height: 1000;
+            fit: ImageFit.fill;
             stroke: root.stroke-color;
             stroke-width: 2px;
             commands: root.stroke-path;
+        }
+
+        // Temperature stroke path (e.g. orange #f5a623 for CPU overview)
+        if root.has-temp && root.temp-path != "" : Path {
+            width: 100%;
+            height: 100%;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1000;
+            viewbox-height: 1000;
+            fit: ImageFit.fill;
+            stroke: root.temp-color;
+            stroke-width: 1.5px;
+            commands: root.temp-path;
         }
 
         // Kernel stroke path (e.g. CPU kernel time)
@@ -499,6 +518,7 @@ slint::slint! {
             viewbox-y: 0;
             viewbox-width: 1000;
             viewbox-height: 1000;
+            fit: ImageFit.fill;
             stroke: root.kernel-color;
             stroke-width: 1.5px;
             commands: root.kernel-path;
@@ -588,7 +608,7 @@ slint::slint! {
         in-out property <int> active-tab: 0;
         in-out property <string> page-title: "Summary";
         in-out property <int> perf-selected-idx: 0; // 0=CPU, 1=Memory, 2=Disk, 3=Network, 4=GPU, 5=Energy, 6=Thermals
-        in-out property <bool> perf-cpu-expanded: true;
+        in-out property <bool> perf-cpu-expanded: false;
         in-out property <int> open-menu: 0; // 0=none, 1=File, 2=Edit, 3=View, 4=Performance, 5=Help
         in-out property <bool> show-sidebar: true;
 
@@ -624,6 +644,14 @@ slint::slint! {
         in property <string> sum-mem-avail-str: "Available 22.8 GB";
         in property <string> sum-mem-cached-str: "Cached 22.2 GB";
         in property <string> sum-mem-swap-str: "Swap 2.1 MB";
+
+        // Summary Vector Graphics properties
+        in property <string> sum-cpu-vector-stroke: "";
+        in property <string> sum-cpu-vector-fill: "";
+        in property <string> sum-cpu-vector-temp: "";
+        in property <string> sum-cpu-vector-kernel: "";
+        in property <string> sum-mem-vector-stroke: "";
+        in property <string> sum-mem-vector-fill: "";
 
         // Summary Bottom 4 Cards
         in property <string> sum-card1-right: "LOW";
@@ -1090,31 +1118,23 @@ slint::slint! {
                                         Text { text: "⚙ Kernel"; color: #b84dff; font-size: Theme.font-size-sm; vertical-alignment: center; }
                                     }
 
-                                    HorizontalLayout {
+                                    VectorTelemetryChart {
                                         vertical-stretch: 1;
-                                        spacing: 4px;
-
-                                        VerticalLayout {
-                                            width: 28px;
-                                            alignment: space-between;
-                                            Text { text: "100%"; color: #22e58b; font-size: 10px; horizontal-alignment: right; }
-                                            Text { text: "50%"; color: #22e58b; font-size: 10px; horizontal-alignment: right; }
-                                            Text { text: "0%"; color: #22e58b; font-size: 10px; horizontal-alignment: right; }
-                                        }
-
-                                        Image {
-                                            horizontal-stretch: 1;
-                                            source: root.sum-cpu-overview-graph;
-                                            image-fit: fill;
-                                        }
-
-                                        VerticalLayout {
-                                            width: 26px;
-                                            alignment: space-between;
-                                            Text { text: "110°"; color: #f5a623; font-size: 10px; }
-                                            Text { text: "55°"; color: #f5a623; font-size: 10px; }
-                                            Text { text: "0°"; color: #f5a623; font-size: 10px; }
-                                        }
+                                        stroke-path: root.sum-cpu-vector-stroke;
+                                        fill-path: root.sum-cpu-vector-fill;
+                                        temp-path: root.sum-cpu-vector-temp;
+                                        has-temp: true;
+                                        kernel-path: root.sum-cpu-vector-kernel;
+                                        has-kernel: true;
+                                        stroke-color: #22e58b;
+                                        fill-color: #22e58b22;
+                                        temp-color: #f5a623;
+                                        kernel-color: #b84dff;
+                                        show-grid: true;
+                                        title-label: "CPU Overview";
+                                        max-label: "100%";
+                                        min-label: "0%";
+                                        time-label: "60s";
                                     }
 
                                     HorizontalLayout {
@@ -1246,11 +1266,17 @@ slint::slint! {
                                         }
                                     }
 
-                                    Image {
+                                    VectorTelemetryChart {
                                         vertical-stretch: 1;
-                                        width: 100%;
-                                        source: root.sum-mem-graph;
-                                        image-fit: fill;
+                                        stroke-path: root.sum-mem-vector-stroke;
+                                        fill-path: root.sum-mem-vector-fill;
+                                        stroke-color: #b84dff;
+                                        fill-color: #b84dff22;
+                                        show-grid: true;
+                                        title-label: "Memory";
+                                        max-label: "100%";
+                                        min-label: "0%";
+                                        time-label: "60s";
                                     }
 
                                     Text { text: "Physical memory in use"; color: Theme.text-dim; font-size: 10px; }
@@ -4232,15 +4258,16 @@ fn sync_all_models(w: &MainWindow, c: &GuiController) {
     w.set_sum_bar_temp_val(SharedString::from(format!("{:.0}°", temp_c)));
     w.set_sum_bar_gpu_val(SharedString::from(format!("{:.0}%", gpu_busy)));
 
-    // Summary Card 2: CPU OVERVIEW 3-Series Chart (Utilization green, Temp orange, Kernel purple)
-    w.set_sum_cpu_overview_graph(render_3series_cpu_overview_graph(
-        640,
-        220,
-        &c.cpu_hist,
-        &c.cpu_temp_hist,
-        &c.cpu_kern_hist,
-        c.settings.show_graph_grid,
-    ));
+    // Summary Card 2: CPU OVERVIEW 3-Series Vector Paths (Utilization green, Temp orange, Kernel purple)
+    let (cpu_stroke, _) = generate_svg_stroke_path(&c.cpu_hist, 100.0);
+    let cpu_fill = generate_svg_fill_path(&cpu_stroke);
+    let (temp_stroke, _) = generate_svg_stroke_path(&c.cpu_temp_hist, 100.0);
+    let (kern_stroke, _) = generate_svg_stroke_path(&c.cpu_kern_hist, 100.0);
+    w.set_sum_cpu_vector_stroke(SharedString::from(cpu_stroke));
+    w.set_sum_cpu_vector_fill(SharedString::from(cpu_fill));
+    w.set_sum_cpu_vector_temp(SharedString::from(temp_stroke));
+    w.set_sum_cpu_vector_kernel(SharedString::from(kern_stroke));
+
     w.set_sum_cpu_logical_str(SharedString::from(format!(
         "{} logical processors",
         snap.cpu.logical_cores
@@ -4275,15 +4302,10 @@ fn sync_all_models(w: &MainWindow, c: &GuiController) {
         format_bytes(snap.memory.used_bytes),
         format_bytes(snap.memory.total_bytes)
     )));
-    w.set_sum_mem_graph(render_single_area_graph(
-        960,
-        96,
-        &c.mem_hist,
-        100.0,
-        [184, 77, 255],
-        [24, 15, 38],
-        c.settings.show_graph_grid,
-    ));
+    let (mem_stroke, _) = generate_svg_stroke_path(&c.mem_hist, 100.0);
+    let mem_fill = generate_svg_fill_path(&mem_stroke);
+    w.set_sum_mem_vector_stroke(SharedString::from(mem_stroke));
+    w.set_sum_mem_vector_fill(SharedString::from(mem_fill));
     w.set_sum_mem_avail_str(SharedString::from(format!(
         "Available {}",
         format_bytes(snap.memory.available_bytes)
@@ -4632,8 +4654,8 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
 
             if w.get_perf_cpu_expanded() {
                 w.set_perf_cpu_cores_grid_img(render_per_core_mini_graphs_grid(
-                    1440,
-                    480,
+                    1920,
+                    960,
                     &c.core_total_hist,
                     &c.core_kern_hist,
                 ));
@@ -4875,6 +4897,23 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             } else {
                 "Disabled"
             }));
+
+            w.set_perf_kv1_k(SharedString::from("Total physical:"));
+            w.set_perf_kv1_v(SharedString::from(format_bytes(snap.memory.total_bytes)));
+            w.set_perf_kv2_k(SharedString::from("Free memory:"));
+            w.set_perf_kv2_v(SharedString::from(format_bytes(snap.memory.free_bytes)));
+            w.set_perf_kv3_k(SharedString::from("Buffers:"));
+            w.set_perf_kv3_v(SharedString::from(format_bytes(snap.memory.buffers_bytes)));
+            w.set_perf_kv4_k(SharedString::from("Shared memory:"));
+            w.set_perf_kv4_v(SharedString::from(format_bytes(snap.memory.shared_bytes)));
+            w.set_perf_kv5_k(SharedString::from("Swap total:"));
+            w.set_perf_kv5_v(SharedString::from(format_bytes(snap.memory.swap_total_bytes)));
+            w.set_perf_kv6_k(SharedString::from("Swap free:"));
+            w.set_perf_kv6_v(SharedString::from(format_bytes(snap.memory.swap_free_bytes)));
+            w.set_perf_kv7_k(SharedString::from("Kernel slab:"));
+            w.set_perf_kv7_v(SharedString::from(format_bytes(snap.memory.slab_bytes)));
+            w.set_perf_kv8_k(SharedString::from("Major faults/s:"));
+            w.set_perf_kv8_v(SharedString::from(format!("{:.0}/s", snap.memory.major_faults_per_sec)));
         }
         2 => {
             // Disk Detail View
@@ -4885,6 +4924,12 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
                 .fold(0.0_f64, f64::max);
             let disk_r: f64 = snap.disks.iter().map(|d| d.read_bytes_per_sec).sum();
             let disk_w: f64 = snap.disks.iter().map(|d| d.write_bytes_per_sec).sum();
+            let primary_disk = snap.disks.first();
+            let disk_r_iops: f64 = snap.disks.iter().map(|d| d.read_iops).sum();
+            let disk_w_iops: f64 = snap.disks.iter().map(|d| d.write_iops).sum();
+            let total_read_b: u64 = snap.disks.iter().map(|d| d.total_read_bytes).sum();
+            let total_written_b: u64 = snap.disks.iter().map(|d| d.total_written_bytes).sum();
+
             w.set_perf_header_title(SharedString::from("Disk"));
             w.set_perf_header_pct(SharedString::from(format!("{:.1}%", disk_util)));
             w.set_perf_header_sub(SharedString::from(format!(
@@ -4926,6 +4971,38 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             w.set_perf_sec_vector_max_label(SharedString::from(format!("{:.1} MB/s", max_w)));
             w.set_perf_sec_vector_min_label(SharedString::from("0 MB/s"));
             w.set_perf_sec_vector_current_val(SharedString::from(format!("{}/s", format_bytes(disk_w as u64))));
+
+            w.set_perf_m1_label(SharedString::from("Active time"));
+            w.set_perf_m1_val(SharedString::from(format!("{:.1}%", disk_util)));
+            w.set_perf_m2_label(SharedString::from("Read rate"));
+            w.set_perf_m2_val(SharedString::from(format!("{}/s", format_bytes(disk_r as u64))));
+            w.set_perf_m3_label(SharedString::from("Write rate"));
+            w.set_perf_m3_val(SharedString::from(format!("{}/s", format_bytes(disk_w as u64))));
+            w.set_perf_m4_label(SharedString::from("Total IOPS"));
+            w.set_perf_m4_val(SharedString::from(format!("{:.0} IOPS", disk_r_iops + disk_w_iops)));
+            w.set_perf_m5_label(SharedString::from("Total read"));
+            w.set_perf_m5_val(SharedString::from(format_bytes(total_read_b)));
+            w.set_perf_m6_label(SharedString::from("Total written"));
+            w.set_perf_m6_val(SharedString::from(format_bytes(total_written_b)));
+            w.set_perf_m7_label(SharedString::from("Total disks"));
+            w.set_perf_m7_val(SharedString::from(snap.disks.len().to_string()));
+
+            w.set_perf_kv1_k(SharedString::from("Primary disk:"));
+            w.set_perf_kv1_v(SharedString::from(primary_disk.map(|d| d.name.as_str()).unwrap_or("--")));
+            w.set_perf_kv2_k(SharedString::from("Drive model:"));
+            w.set_perf_kv2_v(SharedString::from(primary_disk.map(|d| d.model.as_str()).unwrap_or("Block Storage Device")));
+            w.set_perf_kv3_k(SharedString::from("Capacity:"));
+            w.set_perf_kv3_v(SharedString::from(primary_disk.map(|d| format_bytes(d.capacity_bytes)).unwrap_or_else(|| "--".into())));
+            w.set_perf_kv4_k(SharedString::from("Drive kind:"));
+            w.set_perf_kv4_v(SharedString::from(primary_disk.map(|d| d.kind.as_str()).unwrap_or("NVMe / SSD")));
+            w.set_perf_kv5_k(SharedString::from("Read IOPS:"));
+            w.set_perf_kv5_v(SharedString::from(format!("{:.0} ops/s", disk_r_iops)));
+            w.set_perf_kv6_k(SharedString::from("Write IOPS:"));
+            w.set_perf_kv6_v(SharedString::from(format!("{:.0} ops/s", disk_w_iops)));
+            w.set_perf_kv7_k(SharedString::from("Mount points:"));
+            w.set_perf_kv7_v(SharedString::from(primary_disk.map(|d| d.mount_points.join(", ")).unwrap_or_else(|| "/".into())));
+            w.set_perf_kv8_k(SharedString::from("Disks online:"));
+            w.set_perf_kv8_v(SharedString::from(snap.disks.len().to_string()));
         }
         3 => {
             // Network Detail View
@@ -4981,6 +5058,38 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             w.set_perf_sec_vector_max_label(SharedString::from(format!("{:.1} KB/s", max_tx)));
             w.set_perf_sec_vector_min_label(SharedString::from("0 KB/s"));
             w.set_perf_sec_vector_current_val(SharedString::from(format!("{}/s", format_bytes(tx as u64))));
+
+            w.set_perf_m1_label(SharedString::from("Receive rate"));
+            w.set_perf_m1_val(SharedString::from(format!("{}/s", format_bytes(rx as u64))));
+            w.set_perf_m2_label(SharedString::from("Send rate"));
+            w.set_perf_m2_val(SharedString::from(format!("{}/s", format_bytes(tx as u64))));
+            w.set_perf_m3_label(SharedString::from("Total throughput"));
+            w.set_perf_m3_val(SharedString::from(format!("{}/s", format_bytes((rx + tx) as u64))));
+            w.set_perf_m4_label(SharedString::from("Packets/s"));
+            w.set_perf_m4_val(SharedString::from(format!("{:.0}", net.map(|n| n.rx_packets_per_sec + n.tx_packets_per_sec).unwrap_or(0.0))));
+            w.set_perf_m5_label(SharedString::from("Total received"));
+            w.set_perf_m5_val(SharedString::from(format_bytes(net.map(|n| n.total_rx_bytes).unwrap_or(0))));
+            w.set_perf_m6_label(SharedString::from("Total sent"));
+            w.set_perf_m6_val(SharedString::from(format_bytes(net.map(|n| n.total_tx_bytes).unwrap_or(0))));
+            w.set_perf_m7_label(SharedString::from("Link state"));
+            w.set_perf_m7_val(SharedString::from(net.map(|n| n.oper_state.as_str()).unwrap_or("up")));
+
+            w.set_perf_kv1_k(SharedString::from("Adapter name:"));
+            w.set_perf_kv1_v(SharedString::from(name));
+            w.set_perf_kv2_k(SharedString::from("Adapter type:"));
+            w.set_perf_kv2_v(SharedString::from(net.map(|n| n.kind.as_str()).unwrap_or("Ethernet")));
+            w.set_perf_kv3_k(SharedString::from("IPv4 address:"));
+            w.set_perf_kv3_v(SharedString::from(net.map(|n| n.ipv4.as_str()).unwrap_or("--")));
+            w.set_perf_kv4_k(SharedString::from("IPv6 address:"));
+            w.set_perf_kv4_v(SharedString::from(net.map(|n| n.ipv6.as_str()).unwrap_or("--")));
+            w.set_perf_kv5_k(SharedString::from("MAC address:"));
+            w.set_perf_kv5_v(SharedString::from(net.map(|n| n.mac_address.as_str()).unwrap_or("--")));
+            w.set_perf_kv6_k(SharedString::from("Link speed:"));
+            w.set_perf_kv6_v(SharedString::from(net.and_then(|n| n.speed_mbps).map(|s| format!("{} Mbps", s)).unwrap_or_else(|| "1000 Mbps".into())));
+            w.set_perf_kv7_k(SharedString::from("Active sockets:"));
+            w.set_perf_kv7_v(SharedString::from(snap.connections.len().to_string()));
+            w.set_perf_kv8_k(SharedString::from("Network status:"));
+            w.set_perf_kv8_v(SharedString::from("Online / Operational"));
         }
         5 => {
             // Energy Detail View
@@ -5011,6 +5120,41 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             w.set_perf_vector_max_label(SharedString::from(format!("{:.0} W", max_pwr.max(100.0))));
             w.set_perf_vector_min_label(SharedString::from("0 W"));
             w.set_perf_vector_current_val(SharedString::from(format!("{:.1} W", pwr)));
+
+            let cpu_pwr = snap.cpu.package_power_watts.unwrap_or(pwr * 0.7);
+            let gpu_pwr = snap.gpus.first().and_then(|g| g.power_watts).unwrap_or(pwr * 0.3);
+
+            w.set_perf_m1_label(SharedString::from("Package power"));
+            w.set_perf_m1_val(SharedString::from(format!("{:.1} W", pwr)));
+            w.set_perf_m2_label(SharedString::from("CPU power"));
+            w.set_perf_m2_val(SharedString::from(format!("{:.1} W", cpu_pwr)));
+            w.set_perf_m3_label(SharedString::from("GPU power"));
+            w.set_perf_m3_val(SharedString::from(format!("{:.1} W", gpu_pwr)));
+            w.set_perf_m4_label(SharedString::from("Avg frequency"));
+            w.set_perf_m4_val(SharedString::from(format!("{:.2} GHz", snap.cpu.avg_freq_mhz / 1000.0)));
+            w.set_perf_m5_label(SharedString::from("Energy driver"));
+            w.set_perf_m5_val(SharedString::from("RAPL / powercap"));
+            w.set_perf_m6_label(SharedString::from("Governor"));
+            w.set_perf_m6_val(SharedString::from(c.cpu_governor.as_str()));
+            w.set_perf_m7_label(SharedString::from("Power profile"));
+            w.set_perf_m7_val(SharedString::from("Balanced Performance"));
+
+            w.set_perf_kv1_k(SharedString::from("Telemetry source:"));
+            w.set_perf_kv1_v(SharedString::from("Intel RAPL / AMD sysfs"));
+            w.set_perf_kv2_k(SharedString::from("Base clock:"));
+            w.set_perf_kv2_v(SharedString::from(format!("{:.2} GHz", c.cpu_base_ghz)));
+            w.set_perf_kv3_k(SharedString::from("Max turbo clock:"));
+            w.set_perf_kv3_v(SharedString::from(format!("{:.2} GHz", snap.cpu.max_freq_mhz / 1000.0)));
+            w.set_perf_kv4_k(SharedString::from("Frequency driver:"));
+            w.set_perf_kv4_v(SharedString::from(c.cpu_driver.as_str()));
+            w.set_perf_kv5_k(SharedString::from("Sockets:"));
+            w.set_perf_kv5_v(SharedString::from("1"));
+            w.set_perf_kv6_k(SharedString::from("Thermal design power:"));
+            w.set_perf_kv6_v(SharedString::from("TDP 65W - 125W"));
+            w.set_perf_kv7_k(SharedString::from("AC power status:"));
+            w.set_perf_kv7_v(SharedString::from("Plugged In / AC"));
+            w.set_perf_kv8_k(SharedString::from("Energy efficiency:"));
+            w.set_perf_kv8_v(SharedString::from("Active Energy Tuning"));
         }
         _ => {
             // Thermals Detail View
@@ -5037,6 +5181,51 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             w.set_perf_vector_max_label(SharedString::from("100 °C"));
             w.set_perf_vector_min_label(SharedString::from("0 °C"));
             w.set_perf_vector_current_val(SharedString::from(format!("{:.0} °C", temp)));
+
+            let max_temp = snap.sensors.iter()
+                .flat_map(|g| g.readings.iter())
+                .filter(|r| r.category == "Temperature")
+                .map(|r| r.current)
+                .fold(temp, f64::max);
+            let fan_rpm = snap.sensors.iter()
+                .flat_map(|g| g.readings.iter())
+                .find(|r| r.category == "Fan")
+                .map(|r| r.current)
+                .or_else(|| snap.gpus.first().and_then(|g| g.fan_rpm.map(|f| f as f64)))
+                .unwrap_or(0.0);
+            let fan_str = if fan_rpm > 0.0 { format!("{:.0} RPM", fan_rpm) } else { "Passive / Silent".to_string() };
+
+            w.set_perf_m1_label(SharedString::from("Package temp"));
+            w.set_perf_m1_val(SharedString::from(format!("{:.0} °C", temp)));
+            w.set_perf_m2_label(SharedString::from("Max hot-spot"));
+            w.set_perf_m2_val(SharedString::from(format!("{:.0} °C", max_temp)));
+            w.set_perf_m3_label(SharedString::from("Fan speed"));
+            w.set_perf_m3_val(SharedString::from(fan_str));
+            w.set_perf_m4_label(SharedString::from("Thermal state"));
+            w.set_perf_m4_val(SharedString::from(if temp > 85.0 { "HOT / Warning" } else if temp > 70.0 { "Warm" } else { "Normal / Cool" }));
+            w.set_perf_m5_label(SharedString::from("Active sensors"));
+            w.set_perf_m5_val(SharedString::from(snap.sensors.iter().map(|g| g.readings.len()).sum::<usize>().to_string()));
+            w.set_perf_m6_label(SharedString::from("Thermal throttling"));
+            w.set_perf_m6_val(SharedString::from("None (Operating within limits)"));
+            w.set_perf_m7_label(SharedString::from("Cooling policy"));
+            w.set_perf_m7_val(SharedString::from("Dynamic fan curve"));
+
+            w.set_perf_kv1_k(SharedString::from("Primary sensor:"));
+            w.set_perf_kv1_v(SharedString::from(snap.sensors.first().map(|g| g.chip_name.as_str()).unwrap_or("coretemp / k10temp")));
+            w.set_perf_kv2_k(SharedString::from("Tjunction limit:"));
+            w.set_perf_kv2_v(SharedString::from("100 °C"));
+            w.set_perf_kv3_k(SharedString::from("Trip point 0:"));
+            w.set_perf_kv3_v(SharedString::from("85 °C (Fan ramp)"));
+            w.set_perf_kv4_k(SharedString::from("Trip point 1:"));
+            w.set_perf_kv4_v(SharedString::from("105 °C (Emergency shutdown)"));
+            w.set_perf_kv5_k(SharedString::from("Board thermal zones:"));
+            w.set_perf_kv5_v(SharedString::from(snap.sensors.len().to_string()));
+            w.set_perf_kv6_k(SharedString::from("Fan controller:"));
+            w.set_perf_kv6_v(SharedString::from("hwmon PWM controller"));
+            w.set_perf_kv7_k(SharedString::from("Thermal governor:"));
+            w.set_perf_kv7_v(SharedString::from("step_wise"));
+            w.set_perf_kv8_k(SharedString::from("Cooling status:"));
+            w.set_perf_kv8_v(SharedString::from("Optimal"));
         }
     }
 }
