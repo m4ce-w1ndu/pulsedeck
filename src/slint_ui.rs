@@ -46,6 +46,15 @@ slint::slint! {
         sparkline: image,
     }
 
+    export struct CorePlotData {
+        core-idx: int,
+        label: string,
+        stroke-path: string,
+        fill-path: string,
+        kernel-path: string,
+        val-str: string,
+    }
+
     export struct ConnRow {
         proto: string,
         local_ep: string,
@@ -591,6 +600,88 @@ slint::slint! {
         }
     }
 
+    component CoreMiniChart inherits Rectangle {
+        in property <string> label: "CPU 0";
+        in property <string> stroke-path: "";
+        in property <string> fill-path: "";
+        in property <string> kernel-path: "";
+        in property <string> val-str: "0%";
+
+        background: Theme.ui-style == 1 ? #00000030 : (Theme.ui-style == 2 ? #00000020 : #060a0f);
+        border-width: 1px;
+        border-color: Theme.border;
+        border-radius: Theme.card-radius;
+        clip: true;
+
+        // Subtle 1px vector grid
+        Rectangle { y: parent.height * 0.33; width: 100%; height: 1px; background: Theme.border; opacity: 0.25; }
+        Rectangle { y: parent.height * 0.66; width: 100%; height: 1px; background: Theme.border; opacity: 0.25; }
+        Rectangle { x: parent.width * 0.50; width: 1px; height: 100%; background: Theme.border; opacity: 0.25; }
+
+        // Area fill under curve
+        if root.fill-path != "" : Path {
+            width: 100%;
+            height: 100%;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1000;
+            viewbox-height: 1000;
+            fit: ImageFit.fill;
+            fill: #36c5ff18;
+            commands: root.fill-path;
+        }
+
+        // Kernel stroke
+        if root.kernel-path != "" : Path {
+            width: 100%;
+            height: 100%;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1000;
+            viewbox-height: 1000;
+            fit: ImageFit.fill;
+            stroke: #ff5566;
+            stroke-width: 1px;
+            commands: root.kernel-path;
+        }
+
+        // Main stroke
+        if root.stroke-path != "" : Path {
+            width: 100%;
+            height: 100%;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1000;
+            viewbox-height: 1000;
+            fit: ImageFit.fill;
+            stroke: #36c5ff;
+            stroke-width: 1.5px;
+            commands: root.stroke-path;
+        }
+
+        // Core label in clear typography
+        Text {
+            x: 6px;
+            y: 4px;
+            text: root.label;
+            color: Theme.text-dim;
+            font-family: Theme.font-ui;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        // Current utilization % in top right
+        Text {
+            x: parent.width - self.width - 6px;
+            y: 4px;
+            text: root.val-str;
+            color: #36c5ff;
+            font-family: Theme.font-family;
+            font-size: 10px;
+            font-weight: 700;
+        }
+    }
+
     export component MainWindow inherits Window {
         title: "PulseDeck";
         preferred-width: 1480px;
@@ -676,11 +767,13 @@ slint::slint! {
 
         // Performance Page properties
         in property <[PerfNavItem]> perf-nav-items;
+        in property <[CorePlotData]> perf-core-items;
+        in property <int> perf-core-cols: 8;
+        in property <int> perf-core-rows: 2;
         in property <string> perf-header-title: "CPU";
         in property <string> perf-header-pct: "19.4%";
         in property <string> perf-header-sub: "24 logical processors";
         in property <image> perf-header-led-bar;
-        in property <image> perf-cpu-cores-grid-img;
         in property <image> perf-main-graph-img;
         in property <image> perf-secondary-graph-img;
         in property <string> perf-main-graph-label: "% Utilization";
@@ -1534,11 +1627,22 @@ slint::slint! {
                                     }
                                 }
 
-                                if root.perf-selected-idx == 0 && root.perf-cpu-expanded : Image {
+                                if root.perf-selected-idx == 0 && root.perf-cpu-expanded : Rectangle {
                                     width: 100%;
                                     height: 100%;
-                                    source: root.perf-cpu-cores-grid-img;
-                                    image-fit: fill;
+                                    clip: true;
+
+                                    for core[idx] in root.perf-core-items : CoreMiniChart {
+                                        x: Math.mod(idx, root.perf-core-cols) * (parent.width / root.perf-core-cols) + 2px;
+                                        y: Math.floor(idx / root.perf-core-cols) * (parent.height / root.perf-core-rows) + 2px;
+                                        width: (parent.width / root.perf-core-cols) - 4px;
+                                        height: (parent.height / root.perf-core-rows) - 4px;
+                                        label: core.label;
+                                        stroke-path: core.stroke-path;
+                                        fill-path: core.fill-path;
+                                        kernel-path: core.kernel-path;
+                                        val-str: core.val-str;
+                                    }
                                 }
 
                                 if !(root.perf-selected-idx == 0 && root.perf-cpu-expanded) : VerticalLayout {
@@ -4653,12 +4757,40 @@ fn sync_performance_detail(w: &MainWindow, c: &GuiController) {
             ));
 
             if w.get_perf_cpu_expanded() {
-                w.set_perf_cpu_cores_grid_img(render_per_core_mini_graphs_grid(
-                    1920,
-                    960,
-                    &c.core_total_hist,
-                    &c.core_kern_hist,
-                ));
+                let n_cores = c.core_total_hist.len().max(1);
+                let cols = if n_cores >= 16 {
+                    8i32
+                } else if n_cores >= 8 {
+                    4i32
+                } else {
+                    n_cores.min(4) as i32
+                };
+                let rows = ((n_cores as i32) + cols - 1) / cols;
+                w.set_perf_core_cols(cols);
+                w.set_perf_core_rows(rows);
+
+                let mut items = Vec::with_capacity(n_cores);
+                for i in 0..n_cores {
+                    let tot_hist = &c.core_total_hist[i];
+                    let (stroke, _) = generate_svg_stroke_path(tot_hist, 100.0);
+                    let fill = generate_svg_fill_path(&stroke);
+                    let kern_stroke = if let Some(kh) = c.core_kern_hist.get(i) {
+                        generate_svg_stroke_path(kh, 100.0).0
+                    } else {
+                        String::new()
+                    };
+                    let cur_pct = snap.cpu.cores.get(i).map(|co| co.total_pct).unwrap_or(0.0);
+
+                    items.push(CorePlotData {
+                        core_idx: i as i32,
+                        label: SharedString::from(format!("CPU {}", i)),
+                        stroke_path: SharedString::from(stroke),
+                        fill_path: SharedString::from(fill),
+                        kernel_path: SharedString::from(kern_stroke),
+                        val_str: SharedString::from(format!("{:.0}%", cur_pct)),
+                    });
+                }
+                w.set_perf_core_items(ModelRc::new(VecModel::from(items)));
             } else {
                 w.set_perf_has_secondary_graph(false);
                 w.set_perf_main_graph_label(SharedString::from("% Utilization"));
@@ -6084,156 +6216,6 @@ fn draw_series_curve(
     }
 }
 
-/// Renders the per-core mini-graph grid (`CPU 0` .. `CPU N-1`) for Performance -> CPU (`CPUs Expanded`).
-fn render_per_core_mini_graphs_grid(
-    w: u32,
-    h: u32,
-    core_totals: &[VecDeque<f64>],
-    core_kerns: &[VecDeque<f64>],
-) -> Image {
-    let mut buf = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
-    let slice = buf.make_mut_slice();
-
-    for px in slice.iter_mut() {
-        *px = Rgba8Pixel { r: 6, g: 8, b: 11, a: 255 };
-    }
-
-    let n_cores = core_totals.len().max(1);
-    let cols = if n_cores >= 16 {
-        8usize
-    } else if n_cores >= 8 {
-        4usize
-    } else {
-        n_cores.min(4)
-    };
-    let rows = (n_cores + cols - 1) / cols;
-
-    let pad = 6usize;
-    let cell_w = ((w as usize).saturating_sub(pad * (cols + 1))) / cols.max(1);
-    let cell_h = ((h as usize).saturating_sub(pad * (rows + 1))) / rows.max(1);
-
-    for idx in 0..n_cores {
-        let r_idx = idx / cols;
-        let c_idx = idx % cols;
-        let x0 = pad + c_idx * (cell_w + pad);
-        let y0 = pad + r_idx * (cell_h + pad);
-        let x1 = (x0 + cell_w).min(w as usize - 1);
-        let y1 = (y0 + cell_h).min(h as usize - 1);
-
-        // Cell background
-        for y in y0..=y1 {
-            for x in x0..=x1 {
-                slice[y * w as usize + x] = Rgba8Pixel { r: 9, g: 16, b: 22, a: 255 };
-            }
-        }
-
-        // Sub-grid inside cell
-        for gr in 1..4 {
-            let gy = y0 + (gr * cell_h) / 4;
-            for x in x0..=x1 {
-                slice[gy * w as usize + x] = Rgba8Pixel { r: 16, g: 34, b: 48, a: 255 };
-            }
-        }
-        for gc in 1..5 {
-            let gx = x0 + (gc * cell_w) / 5;
-            for y in y0..=y1 {
-                slice[y * w as usize + gx] = Rgba8Pixel { r: 16, g: 34, b: 48, a: 255 };
-            }
-        }
-
-        // Cell border
-        for x in x0..=x1 {
-            slice[y0 * w as usize + x] = Rgba8Pixel { r: 28, g: 64, b: 90, a: 255 };
-            slice[y1 * w as usize + x] = Rgba8Pixel { r: 28, g: 64, b: 90, a: 255 };
-        }
-        for y in y0..=y1 {
-            slice[y * w as usize + x0] = Rgba8Pixel { r: 28, g: 64, b: 90, a: 255 };
-            slice[y * w as usize + x1] = Rgba8Pixel { r: 28, g: 64, b: 90, a: 255 };
-        }
-
-        // Draw "CPU <idx>" bitmap label at top-left of cell
-        let label = format!("CPU {}", idx);
-        draw_tiny_text(slice, w as usize, h as usize, x0 + 5, y0 + 5, &label, [155, 175, 195]);
-
-        // Draw kernel line (red/orange) & total line (cyan) inside cell
-        if let Some(kq) = core_kerns.get(idx) {
-            draw_cell_curve(slice, w as usize, x0 + 1, y0 + 1, cell_w - 2, cell_h - 2, kq, [215, 65, 55], false);
-        }
-        if let Some(tq) = core_totals.get(idx) {
-            draw_cell_curve(slice, w as usize, x0 + 1, y0 + 1, cell_w - 2, cell_h - 2, tq, [45, 195, 255], true);
-        }
-    }
-
-    Image::from_rgba8(buf)
-}
-
-fn draw_cell_curve(
-    slice: &mut [Rgba8Pixel],
-    stride: usize,
-    x0: usize,
-    y0: usize,
-    cw: usize,
-    ch: usize,
-    series: &VecDeque<f64>,
-    col: [u8; 3],
-    fill: bool,
-) {
-    if series.len() < 2 || cw < 4 || ch < 4 {
-        return;
-    }
-    let n = series.len();
-    let mut prev_x = x0;
-    let mut prev_y = y0 + ch - 1;
-
-    for (i, &val) in series.iter().enumerate() {
-        let x = x0 + (i * (cw - 1)) / (n - 1).max(1);
-        let norm = (val / 100.0).clamp(0.0, 1.0);
-        let y = y0 + ((1.0 - norm) * (ch as f64 - 2.0)).round() as usize;
-
-        if i > 0 {
-            let xa = prev_x.min(x);
-            let xb = prev_x.max(x);
-            for cx in xa..=xb {
-                let t = if xb > xa {
-                    (cx - xa) as f64 / (xb - xa) as f64
-                } else {
-                    0.0
-                };
-                let cy = if x >= prev_x {
-                    (prev_y as f64 + t * (y as f64 - prev_y as f64)).round() as usize
-                } else {
-                    (y as f64 + t * (prev_y as f64 - y as f64)).round() as usize
-                }
-                .clamp(y0, y0 + ch - 1);
-
-                if fill {
-                    for fy in (cy + 1)..(y0 + ch) {
-                        let p = &mut slice[fy * stride + cx];
-                        p.r = ((p.r as u16 * 5 + col[0] as u16) / 6) as u8;
-                        p.g = ((p.g as u16 * 5 + col[1] as u16) / 6) as u8;
-                        p.b = ((p.b as u16 * 5 + col[2] as u16) / 6) as u8;
-                    }
-                }
-                slice[cy * stride + cx] = Rgba8Pixel {
-                    r: col[0],
-                    g: col[1],
-                    b: col[2],
-                    a: 255,
-                };
-                if cy > y0 {
-                    slice[(cy - 1) * stride + cx] = Rgba8Pixel {
-                        r: col[0],
-                        g: col[1],
-                        b: col[2],
-                        a: 255,
-                    };
-                }
-            }
-        }
-        prev_x = x;
-        prev_y = y;
-    }
-}
 
 /// Renders the glowing cyan ECG pulse + `PULSEDECK` logo for the bottom-left sidebar.
 fn render_sidebar_logo() -> Image {
@@ -6302,17 +6284,6 @@ fn glyph_5x7(ch: char) -> [u8; 7] {
     }
 }
 
-fn draw_tiny_text(
-    slice: &mut [Rgba8Pixel],
-    w: usize,
-    h: usize,
-    x_start: usize,
-    y_start: usize,
-    text: &str,
-    col: [u8; 3],
-) {
-    draw_scaled_text(slice, w, h, x_start, y_start, text, 1, col);
-}
 
 fn draw_scaled_text(
     slice: &mut [Rgba8Pixel],
