@@ -183,9 +183,9 @@ slint::slint! {
             Text {
                 width: 18px;
                 text: root.icon;
-                color: root.active ? Theme.accent-primary : Theme.text-dim;
-                font-family: Theme.font-ui;
-                font-size: Theme.font-size-base;
+                color: root.active ? Theme.accent-primary : (ta.has-hover ? Theme.text-main : Theme.text-dim);
+                font-family: "DejaVu Sans Mono";
+                font-size: 14px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -268,7 +268,7 @@ slint::slint! {
         callback clicked();
 
         height: 26px;
-        min-width: 26px;
+        min-width: max(26px, btn-lbl.preferred-width + 18px);
         border-radius: Theme.button-radius;
         background: root.filled ? Theme.accent-primary : (ta.pressed ? Theme.nav-selected : (ta.has-hover ? Theme.menu-hover : Theme.bg-card));
         border-width: 1px;
@@ -280,7 +280,7 @@ slint::slint! {
             padding-left: 8px;
             padding-right: 8px;
             alignment: center;
-            Text {
+            btn-lbl := Text {
                 text: root.label;
                 color: root.filled ? #000000 : (ta.has-hover ? #ffffff : Theme.text-main);
                 font-family: Theme.font-ui;
@@ -535,39 +535,57 @@ slint::slint! {
 
         // Header and Footer Overlay Labels
         // Top-Left: Title + Max Label
-        HorizontalLayout {
-            x: 8px;
-            y: 6px;
-            spacing: 8px;
-            Text {
-                text: root.title-label;
-                color: Theme.text-main;
-                font-family: Theme.font-ui;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            Text {
-                text: "· " + root.max-label;
-                color: Theme.text-dim;
-                font-family: Theme.font-family;
-                font-size: 11px;
+        Rectangle {
+            x: 6px;
+            y: 5px;
+            width: title-hl.preferred-width;
+            height: 18px;
+            border-radius: 3px;
+            background: #00000088;
+            title-hl := HorizontalLayout {
+                padding-left: 5px;
+                padding-right: 5px;
+                spacing: 6px;
+                Text {
+                    text: root.title-label;
+                    color: Theme.text-main;
+                    font-family: Theme.font-ui;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "· max " + root.max-label;
+                    color: Theme.text-dim;
+                    font-family: Theme.font-family;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
             }
         }
 
         // Top-Right: Current live value badge
         if root.current-val-label != "" : Rectangle {
-            x: parent.width - self.width - 8px;
-            y: 5px;
+            x: parent.width - self.width - 6px;
+            y: 4px;
+            width: badge-hl.preferred-width;
             height: 20px;
             border-radius: 4px;
-            background: #000000aa;
+            background: #000000bb;
             border-width: 1px;
             border-color: root.stroke-color;
-            opacity: 0.9;
-            HorizontalLayout {
-                padding-left: 6px;
-                padding-right: 6px;
+            badge-hl := HorizontalLayout {
+                padding-left: 7px;
+                padding-right: 7px;
+                spacing: 5px;
                 alignment: center;
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 3px;
+                    background: root.stroke-color;
+                }
                 Text {
                     text: root.current-val-label;
                     color: root.stroke-color;
@@ -580,23 +598,39 @@ slint::slint! {
         }
 
         // Bottom-Left: Min Label
-        Text {
-            x: 8px;
+        Rectangle {
+            x: 6px;
             y: parent.height - self.height - 4px;
-            text: root.min-label;
-            color: Theme.text-dim;
-            font-family: Theme.font-family;
-            font-size: 10px;
+            width: min-txt.preferred-width + 8px;
+            height: 15px;
+            border-radius: 3px;
+            background: #00000088;
+            min-txt := Text {
+                text: root.min-label;
+                color: Theme.text-dim;
+                font-family: Theme.font-family;
+                font-size: 10px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
         }
 
         // Bottom-Right: Time Scale
-        Text {
-            x: parent.width - self.width - 8px;
+        Rectangle {
+            x: parent.width - self.width - 6px;
             y: parent.height - self.height - 4px;
-            text: root.time-label;
-            color: Theme.text-dim;
-            font-family: Theme.font-ui;
-            font-size: 10px;
+            width: time-txt.preferred-width + 8px;
+            height: 15px;
+            border-radius: 3px;
+            background: #00000088;
+            time-txt := Text {
+                text: root.time-label;
+                color: Theme.text-dim;
+                font-family: Theme.font-ui;
+                font-size: 10px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
         }
     }
 
@@ -1020,29 +1054,29 @@ slint::slint! {
                         spacing: 2px;
 
                         SidebarItem { icon: "⌂"; label: "Summary"; active: root.active-tab == 0; clicked => { root.select-tab(0, "Summary"); } }
-                        SidebarItem { icon: "📈"; label: "Performance"; active: root.active-tab == 1; clicked => { root.select-tab(1, "Performance"); } }
-                        SidebarItem { icon: "📊"; label: "Processes"; active: root.active-tab == 2; clicked => { root.select-tab(2, "Processes"); } }
-                        SidebarItem { icon: "ⓘ"; label: "System Info"; active: root.active-tab == 3; clicked => { root.select-tab(3, "System Info"); } }
+                        SidebarItem { icon: "≋"; label: "Performance"; active: root.active-tab == 1; clicked => { root.select-tab(1, "Performance"); } }
+                        SidebarItem { icon: "▤"; label: "Processes"; active: root.active-tab == 2; clicked => { root.select-tab(2, "Processes"); } }
+                        SidebarItem { icon: "⊙"; label: "System Info"; active: root.active-tab == 3; clicked => { root.select-tab(3, "System Info"); } }
                         SidebarItem { icon: "▷"; label: "Startup apps"; active: root.active-tab == 4; clicked => { root.select-tab(4, "Startup apps"); } }
-                        SidebarItem { icon: "👥"; label: "Users"; active: root.active-tab == 5; clicked => { root.select-tab(5, "Users"); } }
-                        SidebarItem { icon: "🔧"; label: "Services"; active: root.active-tab == 6; clicked => { root.select-tab(6, "Services"); } }
+                        SidebarItem { icon: "⚇"; label: "Users"; active: root.active-tab == 5; clicked => { root.select-tab(5, "Users"); } }
+                        SidebarItem { icon: "⚒"; label: "Services"; active: root.active-tab == 6; clicked => { root.select-tab(6, "Services"); } }
 
                         // Clean Section Separator
                         Rectangle {
                             height: 14px;
                             VerticalLayout {
                                 alignment: center;
-                                Rectangle { height: 1px; background: #1e2938; }
+                                Rectangle { height: 1px; background: Theme.border; }
                             }
                         }
 
                         SidebarItem { icon: "⚡"; label: "Power & Freq"; active: root.active-tab == 7; clicked => { root.select-tab(7, "Power & Freq"); } }
-                        SidebarItem { icon: "🧭"; label: "Flight Recorder"; active: root.active-tab == 8; clicked => { root.select-tab(8, "Flight Recorder"); } }
-                        SidebarItem { icon: "🌐"; label: "Connections"; active: root.active-tab == 9; clicked => { root.select-tab(9, "Connections"); } }
-                        SidebarItem { icon: "📋"; label: "Installed Apps"; active: root.active-tab == 10; clicked => { root.select-tab(10, "Installed Apps"); } }
+                        SidebarItem { icon: "◉"; label: "Flight Recorder"; active: root.active-tab == 8; clicked => { root.select-tab(8, "Flight Recorder"); } }
+                        SidebarItem { icon: "⇄"; label: "Connections"; active: root.active-tab == 9; clicked => { root.select-tab(9, "Connections"); } }
+                        SidebarItem { icon: "▦"; label: "Installed Apps"; active: root.active-tab == 10; clicked => { root.select-tab(10, "Installed Apps"); } }
                         SidebarItem { icon: "⚙"; label: "Drivers"; active: root.active-tab == 11; clicked => { root.select-tab(11, "Drivers"); } }
-                        SidebarItem { icon: "🖴"; label: "Disk Space"; active: root.active-tab == 12; clicked => { root.select-tab(12, "Disk Space"); } }
-                        SidebarItem { icon: "⏱"; label: "Benchmarks"; active: root.active-tab == 13; clicked => { root.select-tab(13, "Benchmarks"); } }
+                        SidebarItem { icon: "◔"; label: "Disk Space"; active: root.active-tab == 12; clicked => { root.select-tab(12, "Disk Space"); } }
+                        SidebarItem { icon: "◷"; label: "Benchmarks"; active: root.active-tab == 13; clicked => { root.select-tab(13, "Benchmarks"); } }
 
                         Rectangle { vertical-stretch: 1; }
 
@@ -1064,22 +1098,28 @@ slint::slint! {
                             Rectangle {
                                 horizontal-stretch: 1;
                                 border-radius: 4px;
-                                background: root.active-tab == 14 ? Theme.nav-selected : (set-ta.has-hover ? #161d26 : transparent);
+                                background: root.active-tab == 14 ? Theme.nav-selected : (set-ta.has-hover ? Theme.menu-hover : transparent);
+                                border-width: root.active-tab == 14 ? 1px : 0px;
+                                border-color: Theme.nav-border;
                                 HorizontalLayout {
                                     alignment: center;
                                     spacing: 4px;
-                                    Text { text: "⚙ Settings"; color: Theme.text-main; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                    Text { text: "⚙"; color: root.active-tab == 14 ? Theme.accent-primary : Theme.text-dim; font-family: "DejaVu Sans Mono"; font-size: 13px; vertical-alignment: center; }
+                                    Text { text: "Settings"; color: root.active-tab == 14 ? #ffffff : Theme.text-main; font-family: Theme.font-ui; font-size: Theme.font-size-sm; vertical-alignment: center; }
                                 }
                                 set-ta := TouchArea { mouse-cursor: pointer; clicked => { root.select-tab(14, "Settings"); } }
                             }
                             Rectangle {
                                 horizontal-stretch: 1;
                                 border-radius: 4px;
-                                background: root.active-tab == 15 ? Theme.nav-selected : (col-ta.has-hover ? #161d26 : transparent);
+                                background: root.active-tab == 15 ? Theme.nav-selected : (col-ta.has-hover ? Theme.menu-hover : transparent);
+                                border-width: root.active-tab == 15 ? 1px : 0px;
+                                border-color: Theme.nav-border;
                                 HorizontalLayout {
                                     alignment: center;
                                     spacing: 4px;
-                                    Text { text: "🖌 Colors"; color: Theme.text-main; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                    Text { text: "✦"; color: root.active-tab == 15 ? Theme.accent-primary : Theme.text-dim; font-family: "DejaVu Sans Mono"; font-size: 13px; vertical-alignment: center; }
+                                    Text { text: "Colors"; color: root.active-tab == 15 ? #ffffff : Theme.text-main; font-family: Theme.font-ui; font-size: Theme.font-size-sm; vertical-alignment: center; }
                                 }
                                 col-ta := TouchArea { mouse-cursor: pointer; clicked => { root.select-tab(15, "Colors & Theme"); } }
                             }
@@ -1104,7 +1144,7 @@ slint::slint! {
                                 width: 28px;
                                 height: 28px;
                                 border-radius: 4px;
-                                background: ham-ta.has-hover ? #18212c : transparent;
+                                background: ham-ta.has-hover ? Theme.menu-hover : transparent;
                                 Text {
                                     text: "≡";
                                     color: Theme.text-dim;
@@ -1225,6 +1265,7 @@ slint::slint! {
                                         kernel-color: #b84dff;
                                         show-grid: true;
                                         title-label: "CPU Overview";
+                                        current-val-label: root.sum-vfd-cpu-pct;
                                         max-label: "100%";
                                         min-label: "0%";
                                         time-label: "60s";
@@ -1266,11 +1307,12 @@ slint::slint! {
                                         height: 18px;
                                         padding-left: 4px;
                                         padding-right: 4px;
-                                        Text { width: 48px; text: "PID"; color: Theme.text-dim; font-size: 10px; }
-                                        Text { horizontal-stretch: 1; text: "Name"; color: Theme.text-dim; font-size: 10px; }
-                                        Text { width: 48px; text: "CPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; }
-                                        Text { width: 34px; text: "GPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: center; }
-                                        Text { width: 66px; text: "Memory"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; }
+                                        spacing: 6px;
+                                        Text { width: 56px; text: "PID"; color: Theme.text-dim; font-size: 10px; vertical-alignment: center; }
+                                        Text { horizontal-stretch: 1; text: "Name"; color: Theme.text-dim; font-size: 10px; vertical-alignment: center; }
+                                        Text { width: 44px; text: "CPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
+                                        Text { width: 30px; text: "GPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                                        Text { width: 66px; text: "Memory"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
                                     }
 
                                     ScrollView {
@@ -1280,17 +1322,20 @@ slint::slint! {
                                             for p in root.top-processes : Rectangle {
                                                 height: 18px;
                                                 border-radius: 2px;
-                                                background: p.highlight_kind == 2 ? #3d1c22 : (p.highlight_kind == 1 ? #163624 : transparent);
+                                                background: top-ta.has-hover ? Theme.menu-hover : (p.highlight_kind == 2 ? #3d1c22 : (p.highlight_kind == 1 ? #163624 : transparent));
+                                                border-width: top-ta.has-hover ? 1px : 0px;
+                                                border-color: Theme.nav-border;
                                                 HorizontalLayout {
                                                     padding-left: 4px;
                                                     padding-right: 4px;
-                                                    Text { width: 48px; text: p.pid; color: Theme.text-main; font-size: 11px; vertical-alignment: center; }
+                                                    spacing: 6px;
+                                                    Text { width: 56px; text: p.pid; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; }
                                                     Text { horizontal-stretch: 1; text: p.name; color: Theme.text-main; font-size: 11px; vertical-alignment: center; overflow: elide; }
-                                                    Text { width: 48px; text: p.cpu_str; color: Theme.text-main; font-size: 11px; vertical-alignment: center; horizontal-alignment: right; }
-                                                    Text { width: 34px; text: p.gpu_str; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; horizontal-alignment: center; }
+                                                    Text { width: 44px; text: p.cpu_str; color: Theme.accent-primary; font-size: 11px; vertical-alignment: center; horizontal-alignment: right; }
+                                                    Text { width: 30px; text: p.gpu_str; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; horizontal-alignment: center; }
                                                     Text { width: 66px; text: p.rss_str; color: Theme.text-main; font-size: 11px; vertical-alignment: center; horizontal-alignment: right; }
                                                 }
-                                                TouchArea {
+                                                top-ta := TouchArea {
                                                     mouse-cursor: pointer;
                                                     clicked => {
                                                         root.inspect-process(p.pid);
@@ -1367,6 +1412,7 @@ slint::slint! {
                                         fill-color: #b84dff22;
                                         show-grid: true;
                                         title-label: "Memory";
+                                        current-val-label: root.sum-mem-pct-val;
                                         max-label: "100%";
                                         min-label: "0%";
                                         time-label: "60s";
@@ -2140,8 +2186,10 @@ slint::slint! {
                             border-radius: 6px;
                             VerticalLayout {
                                 padding: 14px;
-                                spacing: 8px;
+                                spacing: 10px;
+                                alignment: start;
                                 Text { text: "INSPECTED TELEMETRY FRAME DETAILS"; color: Theme.accent-secondary; font-size: Theme.font-size-sm; font-weight: 700; }
+                                Rectangle { height: 1px; background: Theme.border; }
                                 Text { text: root.flight-frame-summary; color: Theme.text-main; font-size: Theme.font-size-base; wrap: word-wrap; }
                             }
                         }
@@ -2329,7 +2377,7 @@ slint::slint! {
                                 Text { text: "Target Path:"; color: Theme.text-dim; vertical-alignment: center; }
                                 LineEdit { width: 320px; text <=> root.disk-scan-path; }
                                 ActionBtn { label: "Scan Directory"; stroke-col: Theme.accent-primary; clicked => { root.scan-disk-space(root.disk-scan-path); } }
-                                Text { text: root.disk-scan-summary; color: Theme.accent-secondary; vertical-alignment: center; overflow: elide; }
+                                Text { horizontal-stretch: 1; min-width: 0px; text: root.disk-scan-summary; color: Theme.accent-secondary; vertical-alignment: center; overflow: elide; }
                             }
                         }
 
@@ -2485,6 +2533,8 @@ slint::slint! {
                                 }
                             }
                         }
+
+                        Rectangle { vertical-stretch: 1; }
                     }
 
                     // ============================================================
@@ -2495,6 +2545,7 @@ slint::slint! {
                         spacing: 12px;
 
                         Rectangle {
+                            vertical-stretch: 0;
                             background: Theme.bg-card;
                             border-width: 1px;
                             border-color: Theme.border;
@@ -2523,6 +2574,7 @@ slint::slint! {
                         }
 
                         Rectangle {
+                            vertical-stretch: 0;
                             background: Theme.bg-card;
                             border-width: 1px;
                             border-color: Theme.border;
@@ -2536,27 +2588,47 @@ slint::slint! {
                                     alignment: start;
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Primary Accent"; color: Theme.text-dim; font-size: Theme.font-size-sm; }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Rectangle { width: 10px; height: 10px; y: (parent.height - self.height) / 2; border-radius: 2px; background: Theme.accent-primary; border-width: 1px; border-color: Theme.text-dim; }
+                                            Text { text: "Primary Accent"; color: Theme.text-dim; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                        }
                                         LineEdit { width: 115px; text <=> root.custom-primary-hex; }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Secondary Accent"; color: Theme.text-dim; font-size: Theme.font-size-sm; }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Rectangle { width: 10px; height: 10px; y: (parent.height - self.height) / 2; border-radius: 2px; background: Theme.accent-secondary; border-width: 1px; border-color: Theme.text-dim; }
+                                            Text { text: "Secondary Accent"; color: Theme.text-dim; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                        }
                                         LineEdit { width: 115px; text <=> root.custom-secondary-hex; }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Main Background"; color: Theme.text-dim; font-size: Theme.font-size-sm; }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Rectangle { width: 10px; height: 10px; y: (parent.height - self.height) / 2; border-radius: 2px; background: Theme.bg-main; border-width: 1px; border-color: Theme.text-dim; }
+                                            Text { text: "Main Background"; color: Theme.text-dim; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                        }
                                         LineEdit { width: 115px; text <=> root.custom-bg-hex; }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Card Background"; color: Theme.text-dim; font-size: Theme.font-size-sm; }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Rectangle { width: 10px; height: 10px; y: (parent.height - self.height) / 2; border-radius: 2px; background: Theme.bg-card; border-width: 1px; border-color: Theme.text-dim; }
+                                            Text { text: "Card Background"; color: Theme.text-dim; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                        }
                                         LineEdit { width: 115px; text <=> root.custom-card-hex; }
                                     }
                                     VerticalLayout {
                                         spacing: 4px;
-                                        Text { text: "Primary Text"; color: Theme.text-dim; font-size: Theme.font-size-sm; }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Rectangle { width: 10px; height: 10px; y: (parent.height - self.height) / 2; border-radius: 2px; background: Theme.text-main; border-width: 1px; border-color: Theme.text-dim; }
+                                            Text { text: "Primary Text"; color: Theme.text-dim; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                        }
                                         LineEdit { width: 115px; text <=> root.custom-text-hex; }
                                     }
                                     VerticalLayout {
@@ -2568,6 +2640,7 @@ slint::slint! {
                         }
 
                         Rectangle {
+                            vertical-stretch: 0;
                             background: Theme.bg-card;
                             border-width: 1px;
                             border-color: Theme.border;
@@ -2609,6 +2682,7 @@ slint::slint! {
                         }
 
                         Rectangle {
+                            vertical-stretch: 0;
                             background: Theme.bg-card;
                             border-width: 1px;
                             border-color: Theme.border;
@@ -2629,6 +2703,8 @@ slint::slint! {
                                 }
                             }
                         }
+
+                        Rectangle { vertical-stretch: 1; }
                     }
                 }
             }
