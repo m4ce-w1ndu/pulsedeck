@@ -3,6 +3,7 @@ name = "pulsedeck"
 version = "1.1.0"
 edition = "2024"
 description = "PulseDeck — Native Slint Hardware Telemetry & System Observatory"
+repository = "https://github.com/m4ce-w1ndu/pulsedeck"
 
 [dependencies]
 anyhow = "1.0.104"
@@ -15,3 +16,18 @@ unicode-width = "0.1.14"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"
+
+[package.metadata.deb]
+maintainer = "m4ce-w1ndu"
+section = "utils"
+priority = "optional"
+extended-description = "Native hardware telemetry and system observatory built in Rust with a Slint desktop GUI and an interactive terminal UI (--tui)."
+# $auto covers linked libs (fontconfig, freetype); the rest are dlopen'ed at runtime.
+depends = "$auto, libxkbcommon0, libxkbcommon-x11-0"
+recommends = "libwayland-client0, libegl1, libgl1, libx11-6, libxcursor1, libxrandr2, libxi6"
+assets = [
+    ["target/release/pulsedeck", "usr/bin/", "755"],
+    ["packaging/linux/io.pulsedeck.PulseDeck.desktop", "usr/share/applications/", "644"],
+    ["packaging/linux/pulsedeck.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+    ["README.md", "usr/share/doc/pulsedeck/", "644"],
+]

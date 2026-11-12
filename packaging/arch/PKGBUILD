@@ -1,0 +1,61 @@
+# Maintainer: m4ce-w1ndu
+#
+# Builds PulseDeck from the tagged GitHub source tarball.
+# If a file named "pulsedeck-<pkgver>.tar.gz" already sits next to this
+# PKGBUILD, makepkg uses it instead of downloading (install.sh and CI rely on it).
+#
+# No check(): the unit test inspects live host state (sockets, sensors) that
+# clean-chroot builds lack; CI runs it on a real runner instead.
+
+pkgname=pulsedeck
+pkgver=1.1.0
+pkgrel=1
+pkgdesc='Native hardware telemetry and system observatory (Slint GUI + TUI)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/m4ce-w1ndu/pulsedeck'
+license=('unknown')
+depends=(
+  'gcc-libs'
+  'glibc'
+  'fontconfig'
+  'freetype2'
+  'libxkbcommon'
+  'libxkbcommon-x11'
+  'hicolor-icon-theme'
+)
+makedepends=('cargo' 'pkgconf')
+optdepends=(
+  'wayland: native Wayland session support'
+  'libx11: X11 session support'
+  'libxcursor: X11 cursor themes'
+  'libxrandr: X11 multi-monitor/DPI support'
+  'libxi: X11 input support'
+  'libglvnd: OpenGL (femtovg) renderer; falls back to software rendering otherwise'
+)
+options=('!lto' '!debug')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build"
+  cargo build --frozen --release
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 "target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
+  install -Dm644 packaging/linux/io.pulsedeck.PulseDeck.desktop \
+    "$pkgdir/usr/share/applications/io.pulsedeck.PulseDeck.desktop"
+  install -Dm644 packaging/linux/pulsedeck.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/pulsedeck.svg"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

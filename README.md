@@ -32,6 +32,34 @@
 - `src/providers/diagnostics.rs` — Live socket connections, hardware sensors, disk space scanner, kernel modules/drivers, flight recorder, and benchmarks
 - `src/providers/system_catalog.rs` — Installed applications, system services, startup entries, user sessions, and system info report
 
+## Installation
+
+Prebuilt packages for every tagged version are on the [Releases page](https://github.com/m4ce-w1ndu/pulsedeck/releases):
+
+| Distro | Command |
+|---|---|
+| Arch, CachyOS, EndeavourOS, Manjaro | `sudo pacman -U pulsedeck-*.pkg.tar.zst` |
+| Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `sudo apt install ./pulsedeck_*.deb` |
+| Fedora | `sudo dnf install ./pulsedeck-*.rpm` |
+| openSUSE Tumbleweed | `sudo zypper install ./pulsedeck-*.rpm` |
+| Other x86_64 Linux (glibc ≥ 2.35) | extract `pulsedeck-*-x86_64-linux.tar.gz` and run `./pulsedeck` |
+
+### Build & install from source on Arch-based distros
+
+```bash
+packaging/arch/install.sh              # build the current checkout and install it via pacman
+packaging/arch/install.sh --worktree   # include uncommitted changes
+packaging/arch/install.sh --release    # build the GitHub release matching Cargo.toml
+packaging/arch/install.sh --uninstall  # remove it
+```
+
+### Releasing
+
+CI (`.github/workflows/ci.yml`) builds and tests every push to `main`. To publish a release, bump
+`version` in `Cargo.toml`, commit, then push a matching tag (`git tag v1.2.0 && git push origin v1.2.0`).
+`.github/workflows/release.yml` builds the `.deb`, `.rpm`, Arch package and tarball, install-tests them
+in clean Debian, Ubuntu, Fedora, openSUSE and Arch containers, and attaches them to a GitHub Release.
+
 ## Usage
 
 ```bash

@@ -1,0 +1,192 @@
+name: Release
+
+# Push a tag like v1.2.0 to build packages for the major Linux distributions,
+# smoke-test them in clean containers and publish them as a GitHub Release.
+# Manual runs (workflow_dispatch) build and test everything but don't publish.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+
+  # Generic binary + .deb, built on the oldest supported Ubuntu LTS so the
+  # glibc requirement stays low (works on Debian 12+, Ubuntu 22.04+, Mint 21+, ...).
+  debian:
+    name: Build .deb + tarball
+    needs: version
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libfontconfig1-dev libfreetype6-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Package .deb
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb --no-build --output dist/
+      - name: Package generic tarball
+        run: |
+          stage="pulsedeck-$VERSION-x86_64-linux"
+          mkdir -p "$stage"
+          strip -o "$stage/pulsedeck" target/release/pulsedeck
+          cp packaging/linux/io.pulsedeck.PulseDeck.desktop packaging/linux/pulsedeck.svg README.md "$stage/"
+          tar -czf "dist/$stage.tar.gz" "$stage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-debian
+          path: dist/*
+
+  fedora:
+    name: Build .rpm (Fedora)
+    needs: version
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Install build tools
+        run: dnf install -y rpm-build rpmdevtools tar gzip cargo rust gcc fontconfig-devel freetype-devel
+      - uses: actions/checkout@v4
+      - name: Build RPM
+        run: |
+          rpmdev-setuptree
+          tar --exclude=./.git --transform "s,^\.,pulsedeck-$VERSION," \
+            -czf ~/rpmbuild/SOURCES/pulsedeck-$VERSION.tar.gz .
+          rpmbuild -bb --define "pkgver $VERSION" packaging/rpm/pulsedeck.spec
+          mkdir -p dist && cp ~/rpmbuild/RPMS/*/*.rpm dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-fedora
+          path: dist/*
+
+  arch:
+    name: Build pacman package (Arch)
+    needs: version
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git
+          useradd -m builder
+      - uses: actions/checkout@v4
+      - name: Build package
+        run: |
+          # makepkg refuses to run as root: install deps here, build as 'builder'.
+          source packaging/arch/PKGBUILD
+          pacman -S --noconfirm --needed "${depends[@]}" "${makedepends[@]}"
+          work=/home/builder/pkg
+          mkdir -p "$work"
+          sed "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD > "$work/PKGBUILD"
+          tar --exclude=./.git --transform "s,^\.,pulsedeck-$VERSION," \
+            -czf "$work/pulsedeck-$VERSION.tar.gz" .
+          chown -R builder: "$work"
+          su builder -c "cd $work && makepkg --noconfirm"
+          mkdir -p dist
+          cp "$work"/pulsedeck-*.pkg.tar.zst dist/
+          sed "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD > dist/PKGBUILD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-arch
+          path: dist/*
+
+  # Install each package in a clean container of the target distro and run it.
+  smoke-test:
+    name: Install test (${{ matrix.image }})
+    needs: [debian, fedora, arch]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: 'debian:12',                    artifact: pkg-debian, install: 'apt-get update && apt-get install -y ./pkg/*.deb' }
+          - { image: 'debian:13',                    artifact: pkg-debian, install: 'apt-get update && apt-get install -y ./pkg/*.deb' }
+          - { image: 'ubuntu:22.04',                 artifact: pkg-debian, install: 'apt-get update && apt-get install -y ./pkg/*.deb' }
+          - { image: 'ubuntu:24.04',                 artifact: pkg-debian, install: 'apt-get update && apt-get install -y ./pkg/*.deb' }
+          - { image: 'fedora:latest',                artifact: pkg-fedora, install: 'dnf install -y ./pkg/*.rpm' }
+          - { image: 'opensuse/tumbleweed',          artifact: pkg-fedora, install: 'zypper --non-interactive --no-gpg-checks install --allow-unsigned-rpm ./pkg/*.rpm' }
+          - { image: 'archlinux:latest',             artifact: pkg-arch,   install: 'pacman -Syu --noconfirm && pacman -U --noconfirm ./pkg/*.pkg.tar.zst' }
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: pkg
+      - name: Install package
+        shell: bash
+        run: ${{ matrix.install }}
+      - name: Run
+        shell: bash
+        run: |
+          pulsedeck --version
+          pulsedeck --self-test
+
+  publish:
+    name: Publish GitHub Release
+    if: github.ref_type == 'tag'
+    needs: [version, smoke-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: PulseDeck ${{ needs.version.outputs.version }}
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            ## Install
+
+            | Distro | Package |
+            |---|---|
+            | Arch, CachyOS, EndeavourOS, Manjaro | `sudo pacman -U pulsedeck-*.pkg.tar.zst` |
+            | Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `sudo apt install ./pulsedeck_*.deb` |
+            | Fedora | `sudo dnf install ./pulsedeck-*.rpm` |
+            | openSUSE Tumbleweed | `sudo zypper install ./pulsedeck-*.rpm` |
+            | Anything else (x86_64, glibc ≥ 2.35) | extract `pulsedeck-*-x86_64-linux.tar.gz` and run `./pulsedeck` |
+
+            Arch users can also build from source with the attached `PKGBUILD` (`makepkg -si`).

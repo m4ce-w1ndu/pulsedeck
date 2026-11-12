@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test:
+    name: Build & test (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libfontconfig1-dev libfreetype6-dev libxkbcommon-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked
+
+      # The unit test asserts on live host state (sockets, hwmon sensors) that
+      # hosted VMs may not expose, so it is informational; --self-test gates.
+      - name: Test (informational)
+        continue-on-error: true
+        run: cargo test --release --locked
+
+      - name: Self-test
+        run: ./target/release/pulsedeck --self-test
+
+      - name: Clippy (informational)
+        continue-on-error: true
+        run: cargo clippy --release --locked

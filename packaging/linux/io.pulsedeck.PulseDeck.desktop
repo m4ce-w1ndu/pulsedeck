@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PulseDeck
+GenericName=System Monitor
+Comment=Native hardware telemetry and system observatory
+Exec=pulsedeck
+Icon=pulsedeck
+Terminal=false
+Categories=System;Monitor;Utility;
+Keywords=telemetry;monitor;cpu;memory;process;sensors;benchmark;
+StartupWMClass=pulsedeck
