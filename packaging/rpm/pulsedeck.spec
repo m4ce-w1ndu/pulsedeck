@@ -1,5 +1,5 @@
 # Version is injected by CI: rpmbuild --define "pkgver X.Y.Z"
-%{!?pkgver: %global pkgver 1.1.0}
+%{!?pkgver: %global pkgver 1.2.0}
 %global debug_package %{nil}
 
 Name:           pulsedeck

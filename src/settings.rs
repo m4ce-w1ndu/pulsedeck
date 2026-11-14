@@ -26,6 +26,9 @@ pub struct AppSettings {
     pub compact_rows: bool,
     pub show_graph_grid: bool,
     pub hide_kernel_threads: bool,
+    /// Frame rate for smooth chart scrolling between samples (0 = off, 30 or 60).
+    /// Frames are only drawn while a live chart is on screen.
+    pub chart_fps: u32,
 }
 
 pub const THEME_PRESETS: [&str; 8] = [
@@ -61,6 +64,7 @@ impl Default for AppSettings {
             compact_rows: false,
             show_graph_grid: true,
             hide_kernel_threads: true,
+            chart_fps: 60,
         }
     }
 }
@@ -268,6 +272,13 @@ impl AppSettings {
         if content.contains("\"hide_kernel_threads\":false") {
             s.hide_kernel_threads = false;
         }
+        if let Some(fps) = extract_json_u64(&content, "chart_fps") {
+            s.chart_fps = match fps {
+                0 => 0,
+                1..=45 => 30,
+                _ => 60,
+            };
+        }
         s
     }
 
@@ -277,7 +288,7 @@ impl AppSettings {
             let _ = fs::create_dir_all(parent);
         }
         let json = format!(
-            "{{\n  \"preset_name\":\"{}\",\n  \"accent_primary\":\"{}\",\n  \"accent_secondary\":\"{}\",\n  \"bg_main\":\"{}\",\n  \"bg_panel\":\"{}\",\n  \"bg_card\":\"{}\",\n  \"text_main\":\"{}\",\n  \"font_family\":\"{}\",\n  \"base_font_size\":{},\n  \"refresh_ms\":{},\n  \"compact_rows\":{},\n  \"show_graph_grid\":{},\n  \"hide_kernel_threads\":{}\n}}\n",
+            "{{\n  \"preset_name\":\"{}\",\n  \"accent_primary\":\"{}\",\n  \"accent_secondary\":\"{}\",\n  \"bg_main\":\"{}\",\n  \"bg_panel\":\"{}\",\n  \"bg_card\":\"{}\",\n  \"text_main\":\"{}\",\n  \"font_family\":\"{}\",\n  \"base_font_size\":{},\n  \"refresh_ms\":{},\n  \"compact_rows\":{},\n  \"show_graph_grid\":{},\n  \"hide_kernel_threads\":{},\n  \"chart_fps\":{}\n}}\n",
             escape_json(&self.theme.preset_name),
             rgb_to_hex(self.theme.accent_primary),
             rgb_to_hex(self.theme.accent_secondary),
@@ -291,6 +302,7 @@ impl AppSettings {
             self.compact_rows,
             self.show_graph_grid,
             self.hide_kernel_threads,
+            self.chart_fps,
         );
         fs::write(&path, json)?;
         Ok(path)

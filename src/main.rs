@@ -18,7 +18,7 @@ use std::time::Duration;
 #[derive(Parser, Debug)]
 #[command(
     name = "pulsedeck",
-    version = "1.1.0",
+    version = "1.2.0",
     about = "PulseDeck — Native Slint Hardware Telemetry & System Observatory"
 )]
 struct Cli {
@@ -323,7 +323,7 @@ fn main() -> Result<()> {
 
 fn run_self_test(full: bool) -> Result<()> {
     println!("========================================================================");
-    println!("  PULSEDECK 1.1.0 — TELEMETRY & SUBSYSTEM SELF-TEST");
+    println!("  PULSEDECK 1.2.0 — TELEMETRY & SUBSYSTEM SELF-TEST");
     println!("========================================================================");
 
     let mut sampler = LinuxSystemSampler::new();

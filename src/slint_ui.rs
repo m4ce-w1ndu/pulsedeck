@@ -7,10 +7,12 @@ use crate::settings::{AppSettings, ThemeColors, parse_hex_color, rgb_to_hex};
 use anyhow::Result;
 use slint::{Color, Image, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 slint::slint! {
     import "../assets/fonts/DejaVuSansMono.ttf";
@@ -106,7 +108,15 @@ slint::slint! {
         col6: string,
     }
 
+    // Sub-sample scroll position shared by all live charts (0 = newest sample just
+    // arrived and is still off-screen right, 1 = scrolled fully into view).
+    export global ChartClock {
+        in-out property <float> phase: 1.0;
+    }
+
     export global Theme {
+        // Unlit dot-matrix character cells behind VFD banner text (rendered at 2x).
+        in-out property <image> lcd-ghost;
         in-out property <color> bg-main: #090c0e;
         in-out property <color> bg-panel: #0d1015;
         in-out property <color> bg-card: #0c0f14;
@@ -209,10 +219,56 @@ slint::slint! {
         in property <string> left-text;
         in property <string> right-text: "";
         height: 30px;
-        background: Theme.ui-style == 1 ? #ffffff08 : (Theme.ui-style == 2 ? Theme.bg-header : #050a0c);
+        background: Theme.ui-style == 1 ? #ffffff08 : (Theme.ui-style == 2 ? Theme.bg-header : #060f12);
         border-width: 1px;
-        border-color: Theme.ui-style == 1 ? Theme.border : (Theme.ui-style == 2 ? Theme.border : #152b34);
+        border-color: Theme.ui-style == 1 ? Theme.border : (Theme.ui-style == 2 ? Theme.border : #1d3940);
         border-radius: Theme.card-radius;
+
+        // --- Retro VFD style: character-cell LCD with unlit dot-matrix cells ---
+        // Glyph grid = DejaVu Sans Mono 15px advance (9.03px) + 1.5px letter spacing.
+        property <length> lcd-pitch: 10.5308px;
+        property <length> lcd-pad: 10px;
+        property <int> lcd-cells: floor((root.width - 2 * root.lcd-pad) / root.lcd-pitch);
+
+        if Theme.ui-style == 0 : Rectangle {
+            x: root.lcd-pad;
+            y: 0px;
+            width: root.lcd-cells * root.lcd-pitch;
+            height: root.height;
+            clip: true;
+            Image {
+                x: 0px;
+                y: (parent.height - self.height) / 2;
+                width: Theme.lcd-ghost.width * 0.5px;
+                height: Theme.lcd-ghost.height * 0.5px;
+                source: Theme.lcd-ghost;
+                image-fit: fill;
+            }
+        }
+
+        if Theme.ui-style == 0 : Text {
+            x: root.lcd-pad;
+            height: root.height;
+            text: root.left-text;
+            color: #36e8ff;
+            font-family: "DejaVu Sans Mono";
+            font-size: 15px;
+            letter-spacing: 1.5px;
+            vertical-alignment: center;
+        }
+
+        if Theme.ui-style == 0 && root.right-text != "" : rt := Text {
+            // Snap right-aligned text onto the same character grid.
+            property <int> chars: round((self.preferred-width + 1.5px) / root.lcd-pitch);
+            x: root.lcd-pad + max(0, root.lcd-cells - self.chars) * root.lcd-pitch;
+            height: root.height;
+            text: root.right-text;
+            color: #36e8ff;
+            font-family: "DejaVu Sans Mono";
+            font-size: 15px;
+            letter-spacing: 1.5px;
+            vertical-alignment: center;
+        }
 
         // KDE Breeze Accent Top Line
         if Theme.ui-style == 2 : Rectangle {
@@ -223,7 +279,7 @@ slint::slint! {
             background: Theme.accent-primary;
         }
 
-        HorizontalLayout {
+        if Theme.ui-style != 0 : HorizontalLayout {
             padding-left: 12px;
             padding-right: 12px;
             alignment: space-between;
@@ -241,21 +297,20 @@ slint::slint! {
                 }
                 Text {
                     text: root.left-text;
-                    color: Theme.ui-style == 0 ? #36e8ff : Theme.text-main;
-                    font-family: Theme.ui-style == 0 ? Theme.font-family : Theme.font-ui;
-                    font-size: Theme.ui-style == 0 ? 15px : 13px;
+                    color: Theme.text-main;
+                    font-family: Theme.font-ui;
+                    font-size: 13px;
                     font-weight: 700;
-                    letter-spacing: Theme.ui-style == 0 ? 1.5px : 0.5px;
+                    letter-spacing: 0.5px;
                     vertical-alignment: center;
                 }
             }
             if root.right-text != "" : Text {
                 text: root.right-text;
-                color: Theme.ui-style == 0 ? #36e8ff : Theme.text-dim;
-                font-family: Theme.ui-style == 0 ? Theme.font-family : Theme.font-ui;
-                font-size: Theme.ui-style == 0 ? 15px : 12px;
-                font-weight: Theme.ui-style == 0 ? 700 : 500;
-                letter-spacing: Theme.ui-style == 0 ? 1.5px : 0px;
+                color: Theme.text-dim;
+                font-family: Theme.font-ui;
+                font-size: 12px;
+                font-weight: 500;
                 vertical-alignment: center;
             }
         }
@@ -436,7 +491,27 @@ slint::slint! {
         }
     }
 
+    component DashedVLine inherits Rectangle {
+        y: 0px;
+        width: 1px;
+        height: 100%;
+        for i in floor(root.height / 6px) : Rectangle {
+            x: 0px;
+            y: i * 6px;
+            width: 1px;
+            height: 3px;
+            background: #e6f7ff;
+            opacity: 0.85;
+        }
+    }
+
     component VectorTelemetryChart inherits Rectangle {
+        // Number of points in the series ring (one is kept off-screen for scrolling).
+        in property <int> points: 120;
+        // Visible window covers points-2 intervals; it slides by one interval per sample.
+        property <float> vb-interval: 1000 / max(1, root.points - 1);
+        property <float> vb-x: ChartClock.phase * root.vb-interval;
+        property <float> vb-w: 1000 - root.vb-interval;
         in property <string> stroke-path: "";
         in property <string> fill-path: "";
         in property <string> kernel-path: "";
@@ -453,6 +528,24 @@ slint::slint! {
         in property <string> time-label: "60 seconds";
         in property <string> title-label: "% Utilization";
         in property <string> current-val-label: "";
+
+        // Optional right-hand axis (e.g. temperature scale on the CPU history chart).
+        in property <string> right-max-label: "";
+        in property <string> right-mid-label: "";
+        in property <string> right-min-label: "";
+
+        // Optional range selection: drag to select, click to clear. sel-a/sel-b are
+        // data-space fractions (0 = oldest point, 1 = newest) so the band scrolls
+        // together with the curves.
+        in property <bool> selectable: false;
+        in property <bool> sel-active: false;
+        in property <float> sel-a: 0;
+        in property <float> sel-b: 0;
+        callback range-selected(float, float); // screen-space fractions of chart width
+        callback range-cleared();
+        function data-to-x(u: float) -> length {
+            return (u * 1000 - root.vb-x) / root.vb-w * root.width;
+        }
 
         background: Theme.ui-style == 1 ? #00000022 : (Theme.ui-style == 2 ? Theme.bg-card : #04080b);
         border-width: 1px;
@@ -478,59 +571,123 @@ slint::slint! {
             Rectangle { x: parent.width * 0.833; width: 1px; height: 100%; background: Theme.border; opacity: 0.35; }
         }
 
-        // Shaded fill under curve
-        if root.fill-path != "" : Path {
+        // Paths keep the chart's exact size; only their viewbox slides as
+        // ChartClock.phase advances, so the chart scrolls smoothly between samples
+        // without touching layout. The newest point enters from the right edge.
+        Rectangle {
             width: 100%;
             height: 100%;
-            viewbox-x: 0;
-            viewbox-y: 0;
-            viewbox-width: 1000;
-            viewbox-height: 1000;
-            fit: ImageFit.fill;
-            fill: root.fill-color;
-            commands: root.fill-path;
+
+            // Shaded fill under curve
+            if root.fill-path != "" : Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: root.vb-x;
+                viewbox-y: 0;
+                viewbox-width: root.vb-w;
+                viewbox-height: 1000;
+                fit: ImageFit.fill;
+                fill: root.fill-color;
+                commands: root.fill-path;
+            }
+
+            // Main telemetry stroke path (crisp GPU antialiased line)
+            if root.stroke-path != "" : Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: root.vb-x;
+                viewbox-y: 0;
+                viewbox-width: root.vb-w;
+                viewbox-height: 1000;
+                fit: ImageFit.fill;
+                stroke: root.stroke-color;
+                stroke-width: 2px;
+                commands: root.stroke-path;
+            }
+
+            // Temperature stroke path (e.g. orange #f5a623 for CPU overview)
+            if root.has-temp && root.temp-path != "" : Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: root.vb-x;
+                viewbox-y: 0;
+                viewbox-width: root.vb-w;
+                viewbox-height: 1000;
+                fit: ImageFit.fill;
+                stroke: root.temp-color;
+                stroke-width: 1.5px;
+                commands: root.temp-path;
+            }
+
+            // Kernel stroke path (e.g. CPU kernel time)
+            if root.has-kernel && root.kernel-path != "" : Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: root.vb-x;
+                viewbox-y: 0;
+                viewbox-width: root.vb-w;
+                viewbox-height: 1000;
+                fit: ImageFit.fill;
+                stroke: root.kernel-color;
+                stroke-width: 1.5px;
+                commands: root.kernel-path;
+            }
         }
 
-        // Main telemetry stroke path (crisp GPU antialiased line)
-        if root.stroke-path != "" : Path {
-            width: 100%;
+        // Committed history selection band with dashed edges
+        if root.sel-active : Rectangle {
+            property <length> xa: max(0px, root.data-to-x(root.sel-a));
+            property <length> xb: min(root.width, root.data-to-x(root.sel-b));
+            x: self.xa;
+            width: max(0px, self.xb - self.xa);
             height: 100%;
-            viewbox-x: 0;
-            viewbox-y: 0;
-            viewbox-width: 1000;
-            viewbox-height: 1000;
-            fit: ImageFit.fill;
-            stroke: root.stroke-color;
-            stroke-width: 2px;
-            commands: root.stroke-path;
+            background: #36e8ff1f;
+        }
+        if root.sel-active : DashedVLine {
+            x: root.data-to-x(root.sel-a);
+            visible: self.x >= 0px && self.x <= root.width;
+        }
+        if root.sel-active : DashedVLine {
+            x: root.data-to-x(root.sel-b);
+            visible: self.x >= 0px && self.x <= root.width;
         }
 
-        // Temperature stroke path (e.g. orange #f5a623 for CPU overview)
-        if root.has-temp && root.temp-path != "" : Path {
-            width: 100%;
+        // Live drag preview while selecting
+        if sel-ta.pressed && abs(sel-ta.mouse-x - sel-ta.pressed-x) >= 4px : Rectangle {
+            property <length> xa: clamp(min(sel-ta.pressed-x, sel-ta.mouse-x), 0px, root.width);
+            property <length> xb: clamp(max(sel-ta.pressed-x, sel-ta.mouse-x), 0px, root.width);
+            x: self.xa;
+            width: self.xb - self.xa;
             height: 100%;
-            viewbox-x: 0;
-            viewbox-y: 0;
-            viewbox-width: 1000;
-            viewbox-height: 1000;
-            fit: ImageFit.fill;
-            stroke: root.temp-color;
-            stroke-width: 1.5px;
-            commands: root.temp-path;
+            background: #36e8ff2a;
+            border-width: 1px;
+            border-color: #36e8ff99;
         }
 
-        // Kernel stroke path (e.g. CPU kernel time)
-        if root.has-kernel && root.kernel-path != "" : Path {
-            width: 100%;
-            height: 100%;
-            viewbox-x: 0;
-            viewbox-y: 0;
-            viewbox-width: 1000;
-            viewbox-height: 1000;
-            fit: ImageFit.fill;
-            stroke: root.kernel-color;
-            stroke-width: 1.5px;
-            commands: root.kernel-path;
+        // Right axis labels
+        if root.right-max-label != "" : Text {
+            x: root.width - self.width - 6px;
+            y: 28px;
+            text: root.right-max-label;
+            color: root.temp-color;
+            font-family: Theme.font-family;
+            font-size: 10px;
+        }
+        if root.right-mid-label != "" : Text {
+            x: root.width - self.width - 6px;
+            y: root.height / 2 - self.height / 2;
+            text: root.right-mid-label;
+            color: root.temp-color;
+            font-family: Theme.font-family;
+            font-size: 10px;
+        }
+        if root.right-min-label != "" : Text {
+            x: root.width - self.width - 6px;
+            y: root.height - self.height - 24px;
+            text: root.right-min-label;
+            color: root.temp-color;
+            font-family: Theme.font-family;
+            font-size: 10px;
         }
 
         // Header and Footer Overlay Labels
@@ -632,9 +789,31 @@ slint::slint! {
                 horizontal-alignment: center;
             }
         }
+
+        sel-ta := TouchArea {
+            enabled: root.selectable;
+            mouse-cursor: root.selectable ? MouseCursor.crosshair : MouseCursor.default;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left) {
+                    if (abs(self.mouse-x - self.pressed-x) < 4px) {
+                        root.range-cleared();
+                    } else {
+                        root.range-selected(
+                            clamp(min(self.pressed-x, self.mouse-x) / root.width, 0, 1),
+                            clamp(max(self.pressed-x, self.mouse-x) / root.width, 0, 1));
+                    }
+                }
+            }
+        }
     }
 
     component CoreMiniChart inherits Rectangle {
+        // Number of points in the series ring (one is kept off-screen for scrolling).
+        in property <int> points: 60;
+        // Visible window covers points-2 intervals; it slides by one interval per sample.
+        property <float> vb-interval: 1000 / max(1, root.points - 1);
+        property <float> vb-x: ChartClock.phase * root.vb-interval;
+        property <float> vb-w: 1000 - root.vb-interval;
         in property <string> label: "CPU 0";
         in property <string> stroke-path: "";
         in property <string> fill-path: "";
@@ -652,45 +831,53 @@ slint::slint! {
         Rectangle { y: parent.height * 0.66; width: 100%; height: 1px; background: Theme.border; opacity: 0.25; }
         Rectangle { x: parent.width * 0.50; width: 1px; height: 100%; background: Theme.border; opacity: 0.25; }
 
-        // Area fill under curve
-        if root.fill-path != "" : Path {
+        // Paths keep the chart's exact size; only their viewbox slides as
+        // ChartClock.phase advances, so the chart scrolls smoothly between samples
+        // without touching layout. The newest point enters from the right edge.
+        Rectangle {
             width: 100%;
             height: 100%;
-            viewbox-x: 0;
-            viewbox-y: 0;
-            viewbox-width: 1000;
-            viewbox-height: 1000;
-            fit: ImageFit.fill;
-            fill: #36c5ff18;
-            commands: root.fill-path;
-        }
 
-        // Kernel stroke
-        if root.kernel-path != "" : Path {
-            width: 100%;
-            height: 100%;
-            viewbox-x: 0;
-            viewbox-y: 0;
-            viewbox-width: 1000;
-            viewbox-height: 1000;
-            fit: ImageFit.fill;
-            stroke: #ff5566;
-            stroke-width: 1px;
-            commands: root.kernel-path;
-        }
+            // Area fill under curve
+            if root.fill-path != "" : Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: root.vb-x;
+                viewbox-y: 0;
+                viewbox-width: root.vb-w;
+                viewbox-height: 1000;
+                fit: ImageFit.fill;
+                fill: #36c5ff18;
+                commands: root.fill-path;
+            }
 
-        // Main stroke
-        if root.stroke-path != "" : Path {
-            width: 100%;
-            height: 100%;
-            viewbox-x: 0;
-            viewbox-y: 0;
-            viewbox-width: 1000;
-            viewbox-height: 1000;
-            fit: ImageFit.fill;
-            stroke: #36c5ff;
-            stroke-width: 1.5px;
-            commands: root.stroke-path;
+            // Kernel stroke
+            if root.kernel-path != "" : Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: root.vb-x;
+                viewbox-y: 0;
+                viewbox-width: root.vb-w;
+                viewbox-height: 1000;
+                fit: ImageFit.fill;
+                stroke: #ff5566;
+                stroke-width: 1px;
+                commands: root.kernel-path;
+            }
+
+            // Main stroke
+            if root.stroke-path != "" : Path {
+                width: 100%;
+                height: 100%;
+                viewbox-x: root.vb-x;
+                viewbox-y: 0;
+                viewbox-width: root.vb-w;
+                viewbox-height: 1000;
+                fit: ImageFit.fill;
+                stroke: #36c5ff;
+                stroke-width: 1.5px;
+                commands: root.stroke-path;
+            }
         }
 
         // Core label in clear typography
@@ -761,6 +948,18 @@ slint::slint! {
         in property <string> sum-cpu-speed-str: "Speed 4.00 GHz";
         in property <string> sum-top-procs-banner: "TOP 18 CPU PROCESSES";
         in property <[ProcRow]> top-processes;
+        in property <string> sum-top-procs-banner-right;
+        // CPU history (Summary): rolling window + optional selected time range
+        in property <int> sum-cpu-points: 120;
+        in property <string> sum-cpu-window-label: "10 min";
+        in property <string> sum-cpu-hint: "Drag on the chart to inspect a past time range";
+        in property <bool> sum-sel-active: false;
+        in property <float> sum-sel-a: 0;
+        in property <float> sum-sel-b: 0;
+        in property <string> sum-sel-summary;
+        callback history-range-selected(float, float);
+        callback set-history-window(int);
+        callback history-range-cleared();
 
         in property <image> sum-mem-vert-bar-img;
         in property <string> sum-mem-pct-val: "27%";
@@ -924,6 +1123,7 @@ slint::slint! {
         in-out property <int> custom-refresh-ms: 1000;
         in-out property <bool> custom-compact-rows: false;
         in-out property <bool> custom-show-grid: true;
+        in-out property <int> chart-fps: 60; // 0 = smooth scrolling off
 
         // Context menus state
         in-out property <bool> proc-context-open: false;
@@ -959,6 +1159,7 @@ slint::slint! {
         callback set-refresh-rate(int);
         callback toggle-compact-rows();
         callback toggle-graph-grid();
+        callback cycle-chart-fps();
         callback save-settings();
         callback reset-settings();
         callback quit-app();
@@ -1238,17 +1439,39 @@ slint::slint! {
                                     spacing: 6px;
 
                                     VfdBanner {
-                                        left-text: "CPU OVERVIEW";
+                                        left-text: "CPU HISTORY";
                                         right-text: root.sum-vfd-cpu-pct;
                                     }
 
                                     HorizontalLayout {
                                         height: 18px;
                                         spacing: 14px;
-                                        alignment: start;
                                         Text { text: "〰 Utilization"; color: #22e58b; font-size: Theme.font-size-sm; vertical-alignment: center; }
                                         Text { text: "🌡 Temperature"; color: #f5a623; font-size: Theme.font-size-sm; vertical-alignment: center; }
                                         Text { text: "⚙ Kernel"; color: #b84dff; font-size: Theme.font-size-sm; vertical-alignment: center; }
+                                        Rectangle { horizontal-stretch: 1; }
+                                        // History zoom: visible window over the 10-minute buffer
+                                        HorizontalLayout {
+                                            spacing: 4px;
+                                            for z in [{ n: 120, t: "2m" }, { n: 300, t: "5m" }, { n: 600, t: "10m" }] : Rectangle {
+                                                width: 34px;
+                                                border-radius: 3px;
+                                                border-width: 1px;
+                                                border-color: root.sum-cpu-points == z.n ? #36e8ff : Theme.border;
+                                                background: root.sum-cpu-points == z.n ? #36e8ff22 : (zoom-ta.has-hover ? Theme.menu-hover : transparent);
+                                                Text {
+                                                    text: z.t;
+                                                    color: root.sum-cpu-points == z.n ? #36e8ff : Theme.text-dim;
+                                                    font-size: 10px;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                                zoom-ta := TouchArea {
+                                                    mouse-cursor: pointer;
+                                                    clicked => { root.set-history-window(z.n); }
+                                                }
+                                            }
+                                        }
                                     }
 
                                     VectorTelemetryChart {
@@ -1264,11 +1487,21 @@ slint::slint! {
                                         temp-color: #f5a623;
                                         kernel-color: #b84dff;
                                         show-grid: true;
-                                        title-label: "CPU Overview";
+                                        title-label: "CPU History";
                                         current-val-label: root.sum-vfd-cpu-pct;
                                         max-label: "100%";
                                         min-label: "0%";
-                                        time-label: "60s";
+                                        time-label: root.sum-cpu-window-label;
+                                        points: root.sum-cpu-points;
+                                        right-max-label: "110°";
+                                        right-mid-label: "55°";
+                                        right-min-label: "0°";
+                                        selectable: true;
+                                        sel-active: root.sum-sel-active;
+                                        sel-a: root.sum-sel-a;
+                                        sel-b: root.sum-sel-b;
+                                        range-selected(a, b) => { root.history-range-selected(a, b); }
+                                        range-cleared => { root.history-range-cleared(); }
                                     }
 
                                     HorizontalLayout {
@@ -1276,7 +1509,7 @@ slint::slint! {
                                         alignment: space-between;
                                         VerticalLayout {
                                             spacing: 1px;
-                                            Text { text: "CPU utilization"; color: Theme.text-dim; font-size: 10px; }
+                                            Text { text: root.sum-cpu-hint; color: root.sum-sel-active ? #36e8ff : Theme.text-dim; font-size: 10px; }
                                             Text { text: root.sum-cpu-logical-str; color: Theme.text-dim; font-size: 10px; }
                                         }
                                         VerticalLayout {
@@ -1301,6 +1534,26 @@ slint::slint! {
 
                                     VfdBanner {
                                         left-text: root.sum-top-procs-banner;
+                                        right-text: root.sum-top-procs-banner-right;
+                                    }
+
+                                    if root.sum-sel-active : Rectangle {
+                                        height: 20px;
+                                        border-radius: 3px;
+                                        background: live-ta.has-hover ? #36e8ff30 : #36e8ff18;
+                                        border-width: 1px;
+                                        border-color: #36e8ff66;
+                                        Text {
+                                            text: "◀ " + root.sum-sel-summary + "  ·  back to live";
+                                            color: #36e8ff;
+                                            font-size: 10px;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                        live-ta := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.history-range-cleared(); }
+                                        }
                                     }
 
                                     HorizontalLayout {
@@ -1310,9 +1563,9 @@ slint::slint! {
                                         spacing: 6px;
                                         Text { width: 56px; text: "PID"; color: Theme.text-dim; font-size: 10px; vertical-alignment: center; }
                                         Text { horizontal-stretch: 1; text: "Name"; color: Theme.text-dim; font-size: 10px; vertical-alignment: center; }
-                                        Text { width: 44px; text: "CPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
-                                        Text { width: 30px; text: "GPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
-                                        Text { width: 66px; text: "Memory"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
+                                        Text { width: 44px; text: root.sum-sel-active ? "Avg CPU" : "CPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
+                                        Text { width: 40px; text: root.sum-sel-active ? "Peak" : "GPU"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                                        Text { width: 66px; text: root.sum-sel-active ? "Avg Mem" : "Memory"; color: Theme.text-dim; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
                                     }
 
                                     ScrollView {
@@ -1332,7 +1585,7 @@ slint::slint! {
                                                     Text { width: 56px; text: p.pid; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; }
                                                     Text { horizontal-stretch: 1; text: p.name; color: Theme.text-main; font-size: 11px; vertical-alignment: center; overflow: elide; }
                                                     Text { width: 44px; text: p.cpu_str; color: Theme.accent-primary; font-size: 11px; vertical-alignment: center; horizontal-alignment: right; }
-                                                    Text { width: 30px; text: p.gpu_str; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; horizontal-alignment: center; }
+                                                    Text { width: 40px; text: p.gpu_str; color: Theme.text-dim; font-size: 11px; vertical-alignment: center; horizontal-alignment: center; }
                                                     Text { width: 66px; text: p.rss_str; color: Theme.text-main; font-size: 11px; vertical-alignment: center; horizontal-alignment: right; }
                                                 }
                                                 top-ta := TouchArea {
@@ -2677,6 +2930,11 @@ slint::slint! {
                                         stroke-col: root.custom-show-grid ? Theme.accent-primary : Theme.border;
                                         clicked => { root.toggle-graph-grid(); }
                                     }
+                                    ActionBtn {
+                                        label: root.chart-fps == 0 ? "Smooth Charts: OFF" : "Smooth Charts: " + root.chart-fps + " FPS";
+                                        stroke-col: root.chart-fps > 0 ? Theme.accent-primary : Theme.border;
+                                        clicked => { root.cycle-chart-fps(); }
+                                    }
                                 }
                             }
                         }
@@ -2959,6 +3217,12 @@ slint::slint! {
                 triggered => { root.open-menu = 0; root.toggle-graph-grid(); }
             }
             MenuDropdownItem {
+                icon: "≈";
+                label: "Smooth Charts";
+                shortcut: root.chart-fps == 0 ? "OFF" : root.chart-fps + " FPS";
+                triggered => { root.open-menu = 0; root.cycle-chart-fps(); }
+            }
+            MenuDropdownItem {
                 icon: "↕";
                 label: "Table Density";
                 shortcut: root.custom-compact-rows ? "Compact" : "Standard";
@@ -3084,10 +3348,10 @@ slint::slint! {
             }
             MenuDropdownItem {
                 icon: "★";
-                label: "About PulseDeck v1.1.0";
+                label: "About PulseDeck v1.2.0";
                 triggered => {
                     root.open-menu = 0;
-                    root.status-message = "PulseDeck v1.1.0 — Native Slint Hardware Telemetry & System Observatory";
+                    root.status-message = "PulseDeck v1.2.0 — Native Slint Hardware Telemetry & System Observatory";
                     root.select-tab(3, "System Info");
                 }
             }
@@ -3556,7 +3820,7 @@ slint::slint! {
 const HISTORY_LEN: usize = 120;
 
 struct GuiController {
-    sampler: LinuxSystemSampler,
+    sampler: Arc<Mutex<LinuxSystemSampler>>,
     last_snap: SystemSnapshot,
     settings: AppSettings,
     cpu_hist: VecDeque<f64>,
@@ -3576,6 +3840,40 @@ struct GuiController {
     cpu_base_ghz: f64,
     cpu_driver: String,
     cpu_governor: String,
+    // Long CPU history for the Summary "CPU HISTORY" chart, plus per-sample
+    // process activity so a selected time range can be inspected afterwards.
+    cpu_long: VecDeque<f64>,
+    cpu_kern_long: VecDeque<f64>,
+    cpu_temp_long: VecDeque<f64>,
+    proc_frames: VecDeque<ProcFrame>,
+    proc_names: HashMap<u32, Rc<str>>,
+    /// Selected history range as inclusive sample sequence numbers.
+    selection: Option<(u64, u64)>,
+    /// Samples shown by the CPU history chart (a tail of the 10-min buffer).
+    history_window: usize,
+}
+
+/// Number of samples kept for the CPU history chart (10 min at the default 1 s rate).
+const LONG_HISTORY_LEN: usize = 600;
+/// Zoom levels of the CPU history chart, in samples; the first is the default
+/// and matches the scroll speed of the other live charts.
+const HISTORY_WINDOWS: [usize; 3] = [120, 300, 600];
+/// Processes recorded per history sample (the busiest ones, above MIN_CPU).
+const HISTORY_PROCS_PER_SAMPLE: usize = 64;
+const HISTORY_PROC_MIN_CPU: f64 = 0.1;
+
+/// Busy processes captured for one sample of the CPU history.
+struct ProcFrame {
+    seq: u64,
+    ts_ms: u64,
+    procs: Vec<ProcSample>,
+}
+
+struct ProcSample {
+    pid: u32,
+    cpu: f32,
+    rss: u64,
+    name: Rc<str>, // shared between frames, interned per PID
 }
 
 fn read_cpufreq_meta() -> (f64, String, String) {
@@ -3596,6 +3894,12 @@ fn read_cpufreq_meta() -> (f64, String, String) {
 }
 
 impl GuiController {
+    /// Locks the shared sampler. Never hold two guards in one statement: the
+    /// mutex is not re-entrant.
+    fn sampler(&self) -> MutexGuard<'_, LinuxSystemSampler> {
+        self.sampler.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn new(settings: AppSettings) -> Self {
         let mut sampler = LinuxSystemSampler::new();
         let _ = sampler.sample_tick();
@@ -3605,7 +3909,7 @@ impl GuiController {
         let (cpu_base_ghz, cpu_driver, cpu_governor) = read_cpufreq_meta();
 
         let mut ctrl = Self {
-            sampler,
+            sampler: Arc::new(Mutex::new(sampler)),
             last_snap: snap,
             settings,
             cpu_hist: VecDeque::from(vec![0.0; HISTORY_LEN]),
@@ -3629,6 +3933,13 @@ impl GuiController {
             cpu_base_ghz,
             cpu_driver,
             cpu_governor,
+            cpu_long: VecDeque::from(vec![0.0; LONG_HISTORY_LEN]),
+            cpu_kern_long: VecDeque::from(vec![0.0; LONG_HISTORY_LEN]),
+            cpu_temp_long: VecDeque::from(vec![0.0; LONG_HISTORY_LEN]),
+            proc_frames: VecDeque::with_capacity(LONG_HISTORY_LEN + 1),
+            proc_names: HashMap::new(),
+            selection: None,
+            history_window: HISTORY_WINDOWS[0],
         };
         ctrl.push_history_from_last_snap();
         ctrl
@@ -3701,11 +4012,226 @@ impl GuiController {
                 push_ring_n(&mut self.core_kern_hist[i], c.system_pct, 60);
             }
         }
+
+        push_ring_n(&mut self.cpu_long, snap.cpu.total_pct, LONG_HISTORY_LEN);
+        push_ring_n(&mut self.cpu_kern_long, snap.cpu.system_pct, LONG_HISTORY_LEN);
+        push_ring_n(&mut self.cpu_temp_long, temp_pct, LONG_HISTORY_LEN);
+
+        // snap.processes is sorted by CPU usage, busiest first.
+        let mut procs = Vec::new();
+        for p in snap
+            .processes
+            .iter()
+            .take_while(|p| p.cpu_pct >= HISTORY_PROC_MIN_CPU)
+            .take(HISTORY_PROCS_PER_SAMPLE)
+        {
+            let name = match self.proc_names.get(&p.pid) {
+                Some(n) if **n == *p.name => Rc::clone(n),
+                _ => {
+                    let n: Rc<str> = Rc::from(p.name.as_str());
+                    self.proc_names.insert(p.pid, Rc::clone(&n));
+                    n
+                }
+            };
+            procs.push(ProcSample { pid: p.pid, cpu: p.cpu_pct as f32, rss: p.mem_rss_bytes, name });
+        }
+        if self.proc_names.len() > 8192 {
+            self.proc_names.clear(); // frames keep their own references
+        }
+        self.proc_frames.push_back(ProcFrame { seq: snap.seq, ts_ms: snap.timestamp_epoch_ms, procs });
+        while self.proc_frames.len() > LONG_HISTORY_LEN {
+            self.proc_frames.pop_front();
+        }
+        // Forget the selection once it has scrolled completely out of the window.
+        if let Some((_, hi)) = self.selection
+            && self.proc_frames.front().is_none_or(|f| hi < f.seq)
+        {
+            self.selection = None;
+        }
+    }
+
+    /// Long-history ring index (0 = oldest point) of a sample sequence number.
+    fn long_index_of(&self, seq: u64) -> f64 {
+        (LONG_HISTORY_LEN - 1) as f64 - (self.last_snap.seq as f64 - seq as f64)
+    }
+
+    /// Index (0 = oldest visible point) of a sample within the zoomed chart window.
+    fn window_index_of(&self, seq: u64) -> f64 {
+        (self.history_window - 1) as f64 - (self.last_snap.seq as f64 - seq as f64)
+    }
+
+    /// Converts a drag over the history chart (screen fractions of its width) into
+    /// a sample range. `phase` is the chart scroll phase the user was looking at.
+    fn select_history_range(&mut self, f0: f32, f1: f32, phase: f32) {
+        let n = self.history_window as f64;
+        // Include exactly the samples whose points lie inside the dragged span.
+        let i0 = (f0 as f64 * (n - 2.0) + phase as f64 - 1e-4).ceil();
+        let i1 = (f1 as f64 * (n - 2.0) + phase as f64 + 1e-4).floor();
+        let latest = self.last_snap.seq as f64;
+        let to_seq = |i: f64| (latest - (n - 1.0 - i)).max(0.0) as u64;
+        let oldest = self.proc_frames.front().map_or(0, |f| f.seq);
+        let lo = to_seq(i0).max(oldest);
+        let hi = to_seq(i1).min(self.last_snap.seq);
+        self.selection = (hi >= lo).then_some((lo, hi));
+    }
+
+    /// Aggregates per-process activity over the selected range: rows sorted by
+    /// average CPU, plus the number of samples and the average total CPU.
+    fn history_range_rows(&self, lo: u64, hi: u64) -> (Vec<ProcRow>, usize, f64) {
+        struct Agg {
+            name: Rc<str>,
+            cpu_sum: f64,
+            peak: f32,
+            rss_sum: u64,
+            seen: u32,
+        }
+        let mut agg: HashMap<u32, Agg> = HashMap::new();
+        let mut frames = 0usize;
+        for f in self.proc_frames.iter().filter(|f| f.seq >= lo && f.seq <= hi) {
+            frames += 1;
+            for p in &f.procs {
+                let e = agg.entry(p.pid).or_insert_with(|| Agg {
+                    name: Rc::clone(&p.name),
+                    cpu_sum: 0.0,
+                    peak: 0.0,
+                    rss_sum: 0,
+                    seen: 0,
+                });
+                e.cpu_sum += p.cpu as f64;
+                e.peak = e.peak.max(p.cpu);
+                e.rss_sum += p.rss;
+                e.seen += 1;
+            }
+        }
+        let frames_f = frames.max(1) as f64;
+        let mut list: Vec<(u32, Agg)> = agg.into_iter().collect();
+        list.sort_by(|a, b| b.1.cpu_sum.total_cmp(&a.1.cpu_sum));
+        let rows = list
+            .into_iter()
+            .take(18)
+            .map(|(pid, a)| ProcRow {
+                pid: pid as i32,
+                name: SharedString::from(&*a.name),
+                display_name: SharedString::from(&*a.name),
+                cpu_str: SharedString::from(format!("{:.1}%", a.cpu_sum / frames_f)),
+                gpu_str: SharedString::from(format!("{:.0}%", a.peak)),
+                rss_str: SharedString::from(format_bytes(a.rss_sum / a.seen.max(1) as u64)),
+                ..Default::default()
+            })
+            .collect();
+        let i_lo = self.long_index_of(lo).max(0.0) as usize;
+        let i_hi = (self.long_index_of(hi).max(0.0) as usize).min(LONG_HISTORY_LEN - 1);
+        let avg_cpu = if i_hi >= i_lo {
+            self.cpu_long.range(i_lo..=i_hi).sum::<f64>() / (i_hi - i_lo + 1) as f64
+        } else {
+            0.0
+        };
+        (rows, frames, avg_cpu)
+    }
+
+    fn frame_time_ms(&self, seq: u64) -> Option<u64> {
+        let first = self.proc_frames.front()?.seq;
+        self.proc_frames.get(seq.checked_sub(first)? as usize).map(|f| f.ts_ms)
     }
 
     fn tick(&mut self) {
-        self.last_snap = self.sampler.sample_tick();
+        let snap = self.sampler().sample_tick();
+        self.apply_snapshot(snap);
+    }
+
+    fn apply_snapshot(&mut self, snap: SystemSnapshot) {
+        self.last_snap = snap;
         self.push_history_from_last_snap();
+    }
+}
+
+type SnapshotHandler = Box<dyn FnMut(SystemSnapshot)>;
+
+thread_local! {
+    /// UI-thread handler for snapshots produced by the sampler thread.
+    static SNAPSHOT_SINK: RefCell<Option<SnapshotHandler>> = const { RefCell::new(None) };
+}
+
+fn spawn_sampler_thread(sampler: Arc<Mutex<LinuxSystemSampler>>, period_ms: Arc<AtomicU64>) {
+    let _ = std::thread::Builder::new()
+        .name("pulsedeck-sampler".into())
+        .spawn(move || {
+            // Fixed-rate schedule so samples (and chart scrolling) stay evenly spaced.
+            let mut next = Instant::now();
+            loop {
+                next += Duration::from_millis(period_ms.load(Ordering::Relaxed));
+                let now = Instant::now();
+                if next > now {
+                    std::thread::sleep(next - now);
+                } else {
+                    next = now;
+                }
+                let snap = sampler.lock().unwrap_or_else(|e| e.into_inner()).sample_tick();
+                let delivered = slint::invoke_from_event_loop(move || {
+                    SNAPSHOT_SINK.with(|sink| {
+                        if let Some(handler) = sink.borrow_mut().as_mut() {
+                            handler(snap);
+                        }
+                    });
+                });
+                if delivered.is_err() {
+                    break; // event loop has quit
+                }
+            }
+        });
+}
+
+/// Drives the sub-sample scroll offset of all live charts.
+///
+/// Charts are redrawn from new path data once per sample; in between, a
+/// 30/60 Hz timer only moves a single `phase` value (0..1) that translates the
+/// already-tessellated paths. The timer stops as soon as the scroll reaches the
+/// newest sample or no chart is on screen, so an idle or hidden window costs nothing.
+struct ChartScroll {
+    win: slint::Weak<MainWindow>,
+    timer: slint::Timer,
+    state: RefCell<(Instant, u64)>, // (time of last sample, sample period ms)
+}
+
+impl ChartScroll {
+    fn new(win: slint::Weak<MainWindow>) -> Self {
+        Self {
+            win,
+            timer: slint::Timer::default(),
+            state: RefCell::new((Instant::now(), 1000)),
+        }
+    }
+
+    fn on_new_sample(self: &Rc<Self>, period_ms: u64) {
+        *self.state.borrow_mut() = (Instant::now(), period_ms.max(1));
+        let Some(w) = self.win.upgrade() else { return };
+        let fps = w.get_chart_fps();
+        let charts_visible = matches!(w.get_active_tab(), 0 | 1) && fps > 0;
+        if !charts_visible {
+            w.global::<ChartClock>().set_phase(1.0);
+            self.timer.stop();
+            return;
+        }
+        w.global::<ChartClock>().set_phase(0.0);
+        let interval = Duration::from_micros(1_000_000 / fps as u64);
+        if !self.timer.running() || self.timer.interval() != interval {
+            let this = Rc::downgrade(self);
+            self.timer.start(slint::TimerMode::Repeated, interval, move || {
+                if let Some(this) = this.upgrade() {
+                    this.frame();
+                }
+            });
+        }
+    }
+
+    fn frame(&self) {
+        let Some(w) = self.win.upgrade() else { return };
+        let (at, period) = *self.state.borrow();
+        let phase = (at.elapsed().as_secs_f32() * 1000.0 / period as f32).min(1.0);
+        w.global::<ChartClock>().set_phase(phase);
+        if phase >= 1.0 || !matches!(w.get_active_tab(), 0 | 1) {
+            self.timer.stop();
+        }
     }
 }
 
@@ -3725,11 +4251,12 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
     let ctrl = Rc::new(RefCell::new(GuiController::new(initial_settings)));
 
     win.set_sidebar_logo_img(render_sidebar_logo());
+    win.global::<Theme>().set_lcd_ghost(render_lcd_ghost_cells());
 
     {
         let c = ctrl.borrow();
         apply_settings_to_window(&win, &c.settings);
-        win.set_disk_scan_path(SharedString::from(c.sampler.disk_space.root_path.clone()));
+        win.set_disk_scan_path(SharedString::from(c.sampler().disk_space.root_path.clone()));
         sync_all_models(&win, &c);
     }
 
@@ -3768,6 +4295,46 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
             if let Some(w) = win_weak.upgrade() {
                 let mut c = ctrl_c.borrow_mut();
                 c.tick();
+                sync_all_models(&w, &c);
+            }
+        });
+    }
+
+    // Callbacks: CPU history range selection
+    {
+        let win_weak = win.as_weak();
+        let ctrl_c = Rc::clone(&ctrl);
+        win.on_history_range_selected(move |f0, f1| {
+            if let Some(w) = win_weak.upgrade() {
+                let phase = w.global::<ChartClock>().get_phase();
+                let mut c = ctrl_c.borrow_mut();
+                c.select_history_range(f0, f1, phase);
+                sync_history_selection(&w, &c);
+            }
+        });
+    }
+    {
+        let win_weak = win.as_weak();
+        let ctrl_c = Rc::clone(&ctrl);
+        win.on_history_range_cleared(move || {
+            if let Some(w) = win_weak.upgrade() {
+                let mut c = ctrl_c.borrow_mut();
+                c.selection = None;
+                sync_history_selection(&w, &c);
+            }
+        });
+    }
+
+    {
+        let win_weak = win.as_weak();
+        let ctrl_c = Rc::clone(&ctrl);
+        win.on_set_history_window(move |samples| {
+            if let Some(w) = win_weak.upgrade() {
+                let mut c = ctrl_c.borrow_mut();
+                c.history_window = HISTORY_WINDOWS
+                    .into_iter()
+                    .find(|&n| n == samples as usize)
+                    .unwrap_or(HISTORY_WINDOWS[0]);
                 sync_all_models(&w, &c);
             }
         });
@@ -3886,20 +4453,22 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         let ctrl_c = Rc::clone(&ctrl);
         win.on_scan_disk_space(move |path_str| {
             if let Some(w) = win_weak.upgrade() {
-                let mut c = ctrl_c.borrow_mut();
+                let c = ctrl_c.borrow_mut();
                 let target = if path_str.trim().is_empty() {
                     "."
                 } else {
                     path_str.trim()
                 };
-                c.sampler.rescan_disk_space(target);
+                let msg = {
+                    let mut smp = c.sampler();
+                    let ds = smp.rescan_disk_space(target);
+                    format!(
+                        "Scanned {} ({} files in {} ms)",
+                        ds.root_path, ds.scanned_files, ds.scan_duration_ms
+                    )
+                };
                 sync_disk_space_models(&w, &c);
-                w.set_status_message(SharedString::from(format!(
-                    "Scanned {} ({} files in {} ms)",
-                    c.sampler.disk_space.root_path,
-                    c.sampler.disk_space.scanned_files,
-                    c.sampler.disk_space.scan_duration_ms
-                )));
+                w.set_status_message(SharedString::from(msg));
             }
         });
     }
@@ -3911,7 +4480,7 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         win.on_scrub_flight(move |target_idx| {
             if let Some(w) = win_weak.upgrade() {
                 let c = ctrl_c.borrow();
-                let len = c.sampler.flight_recorder.trace.samples.len() as i32;
+                let len = c.sampler().flight_recorder.trace.samples.len() as i32;
                 if len > 0 {
                     let clamped = target_idx.clamp(0, len - 1);
                     w.set_flight_scrub_index(clamped);
@@ -3928,12 +4497,12 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         win.on_export_flight_trace(move || {
             if let Some(w) = win_weak.upgrade() {
                 let c = ctrl_c.borrow();
-                let json = serialize_flight_trace_json(c.sampler.export_flight_trace());
+                let json = serialize_flight_trace_json(c.sampler().export_flight_trace());
                 let path = "pulsedeck-capture.pulsetrace";
                 match fs::write(path, &json) {
                     Ok(_) => w.set_status_message(SharedString::from(format!(
                         "Exported {} frames to {}",
-                        c.sampler.flight_recorder.trace.samples.len(),
+                        c.sampler().flight_recorder.trace.samples.len(),
                         path
                     ))),
                     Err(e) => w.set_status_message(SharedString::from(format!(
@@ -3951,9 +4520,9 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         let ctrl_c = Rc::clone(&ctrl);
         win.on_run_benchmarks(move || {
             if let Some(w) = win_weak.upgrade() {
-                let mut c = ctrl_c.borrow_mut();
+                let c = ctrl_c.borrow_mut();
                 let cores = c.last_snap.cpu.logical_cores;
-                let rep = c.sampler.run_all_benchmarks(cores).clone();
+                let rep = c.sampler().run_all_benchmarks(cores).clone();
                 w.set_bench_composite(SharedString::from(rep.composite_score.to_string()));
                 w.set_bench_sc(SharedString::from(
                     rep.cpu_single_core.normalized_score.to_string(),
@@ -4002,7 +4571,7 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         win.on_export_sysinfo(move || {
             if let Some(w) = win_weak.upgrade() {
                 let c = ctrl_c.borrow();
-                if let Some(ref info) = c.sampler.system_info {
+                if let Some(ref info) = c.sampler().system_info {
                     let text = format_system_info_report(info);
                     let path = "pulsedeck-system-info.txt";
                     match fs::write(path, &text) {
@@ -4109,6 +4678,23 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
     {
         let win_weak = win.as_weak();
         let ctrl_c = Rc::clone(&ctrl);
+        win.on_cycle_chart_fps(move || {
+            if let Some(w) = win_weak.upgrade() {
+                let mut c = ctrl_c.borrow_mut();
+                c.settings.chart_fps = match c.settings.chart_fps {
+                    60 => 30,
+                    30 => 0,
+                    _ => 60,
+                };
+                let _ = c.settings.save();
+                apply_settings_to_window(&w, &c.settings);
+            }
+        });
+    }
+
+    {
+        let win_weak = win.as_weak();
+        let ctrl_c = Rc::clone(&ctrl);
         win.on_toggle_graph_grid(move || {
             if let Some(w) = win_weak.upgrade() {
                 let mut c = ctrl_c.borrow_mut();
@@ -4120,48 +4706,40 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         });
     }
 
-    let timer = Rc::new(slint::Timer::default());
+    // Telemetry sampling takes 50-70 ms, so it runs on a worker thread; the UI
+    // thread only receives finished snapshots and stays free to render frames.
+    let period_ms = Arc::new(AtomicU64::new(ctrl.borrow().settings.refresh_ms));
+    let scroll = Rc::new(ChartScroll::new(win.as_weak()));
     {
         let win_weak = win.as_weak();
         let ctrl_c = Rc::clone(&ctrl);
-        let timer_c = Rc::clone(&timer);
-        let initial_ms = ctrl.borrow().settings.refresh_ms;
-        timer.start(
-            slint::TimerMode::Repeated,
-            Duration::from_millis(initial_ms),
-            move || {
+        let scroll_c = Rc::clone(&scroll);
+        let period_c = Arc::clone(&period_ms);
+        SNAPSHOT_SINK.with(|sink| {
+            *sink.borrow_mut() = Some(Box::new(move |snap: SystemSnapshot| {
                 if let Some(w) = win_weak.upgrade() {
                     let mut c = ctrl_c.borrow_mut();
-                    c.tick();
+                    c.apply_snapshot(snap);
                     sync_all_models(&w, &c);
+                    drop(c);
+                    scroll_c.on_new_sample(period_c.load(Ordering::Relaxed));
                 }
-            },
-        );
-
-        let win_weak2 = win.as_weak();
-        let ctrl_c2 = Rc::clone(&ctrl);
+            }));
+        });
+        spawn_sampler_thread(Arc::clone(&ctrl.borrow().sampler), Arc::clone(&period_ms));
+    }
+    {
+        let win_weak = win.as_weak();
+        let ctrl_c = Rc::clone(&ctrl);
+        let period_c = Arc::clone(&period_ms);
         win.on_set_refresh_rate(move |ms| {
-            if let Some(w) = win_weak2.upgrade() {
+            if let Some(w) = win_weak.upgrade() {
                 let clamped = (ms as u64).clamp(200, 5000);
-                {
-                    let mut c = ctrl_c2.borrow_mut();
-                    c.settings.refresh_ms = clamped;
-                    let _ = c.settings.save();
-                    apply_settings_to_window(&w, &c.settings);
-                }
-                let w_tick = w.as_weak();
-                let c_tick = Rc::clone(&ctrl_c2);
-                timer_c.start(
-                    slint::TimerMode::Repeated,
-                    Duration::from_millis(clamped),
-                    move || {
-                        if let Some(win_inner) = w_tick.upgrade() {
-                            let mut ci = c_tick.borrow_mut();
-                            ci.tick();
-                            sync_all_models(&win_inner, &ci);
-                        }
-                    },
-                );
+                let mut c = ctrl_c.borrow_mut();
+                c.settings.refresh_ms = clamped;
+                let _ = c.settings.save();
+                apply_settings_to_window(&w, &c.settings);
+                period_c.store(clamped, Ordering::Relaxed);
             }
         });
     }
@@ -4201,17 +4779,17 @@ pub fn run_slint_gui(initial_settings: AppSettings) -> Result<()> {
         let ctrl_c = Rc::clone(&ctrl);
         win.on_toggle_flight_recording(move |rec| {
             if let Some(w) = win_weak.upgrade() {
-                let mut c = ctrl_c.borrow_mut();
-                c.sampler.flight_recorder.recording = rec;
+                let c = ctrl_c.borrow_mut();
+                c.sampler().flight_recorder.recording = rec;
                 if rec {
                     w.set_status_message(SharedString::from("Flight Recorder active"));
                 } else {
-                    let json = serialize_flight_trace_json(c.sampler.export_flight_trace());
+                    let json = serialize_flight_trace_json(c.sampler().export_flight_trace());
                     let path = "pulsedeck-capture.pulsetrace";
                     let _ = fs::write(path, &json);
                     w.set_status_message(SharedString::from(format!(
                         "Recording paused & saved ({} frames) to {}",
-                        c.sampler.flight_recorder.trace.samples.len(),
+                        c.sampler().flight_recorder.trace.samples.len(),
                         path
                     )));
                 }
@@ -4395,7 +4973,7 @@ fn sync_all_models(w: &MainWindow, c: &GuiController) {
         "Native providers healthy · {} processes",
         snap.processes.len()
     )));
-    let rec_frames = c.sampler.flight_recorder.trace.samples.len() as u64;
+    let rec_frames = c.sampler().flight_recorder.trace.samples.len() as u64;
     let rec_secs = (rec_frames * c.settings.refresh_ms) / 1000;
     let rec_cs = ((rec_frames * c.settings.refresh_ms) % 1000) / 10;
     w.set_status_timer_text(SharedString::from(format!(
@@ -4438,15 +5016,22 @@ fn sync_all_models(w: &MainWindow, c: &GuiController) {
     w.set_sum_bar_temp_val(SharedString::from(format!("{:.0}°", temp_c)));
     w.set_sum_bar_gpu_val(SharedString::from(format!("{:.0}%", gpu_busy)));
 
-    // Summary Card 2: CPU OVERVIEW 3-Series Vector Paths (Utilization green, Temp orange, Kernel purple)
-    let (cpu_stroke, _) = generate_svg_stroke_path(&c.cpu_hist, 100.0);
+    // Summary Card 2: CPU HISTORY (Utilization green, Temp orange, Kernel purple)
+    let tail = |q: &VecDeque<f64>| -> VecDeque<f64> {
+        q.iter().skip(q.len().saturating_sub(c.history_window)).copied().collect()
+    };
+    let (cpu_stroke, _) = generate_svg_stroke_path(&tail(&c.cpu_long), 100.0);
     let cpu_fill = generate_svg_fill_path(&cpu_stroke);
-    let (temp_stroke, _) = generate_svg_stroke_path(&c.cpu_temp_hist, 100.0);
-    let (kern_stroke, _) = generate_svg_stroke_path(&c.cpu_kern_hist, 100.0);
+    let (temp_stroke, _) = generate_svg_stroke_path(&tail(&c.cpu_temp_long), 100.0);
+    let (kern_stroke, _) = generate_svg_stroke_path(&tail(&c.cpu_kern_long), 100.0);
     w.set_sum_cpu_vector_stroke(SharedString::from(cpu_stroke));
     w.set_sum_cpu_vector_fill(SharedString::from(cpu_fill));
     w.set_sum_cpu_vector_temp(SharedString::from(temp_stroke));
     w.set_sum_cpu_vector_kernel(SharedString::from(kern_stroke));
+    w.set_sum_cpu_points(c.history_window as i32);
+    w.set_sum_cpu_window_label(SharedString::from(format_span_secs(
+        (c.history_window as u64 * c.settings.refresh_ms) / 1000,
+    )));
 
     w.set_sum_cpu_logical_str(SharedString::from(format!(
         "{} logical processors",
@@ -4454,24 +5039,8 @@ fn sync_all_models(w: &MainWindow, c: &GuiController) {
     )));
     w.set_sum_cpu_speed_str(SharedString::from(format!("Speed {:.2} GHz", ghz)));
 
-    // Summary Card 3: TOP 18 CPU PROCESSES
-    w.set_sum_top_procs_banner(SharedString::from("TOP 18 CPU PROCESSES"));
-    let top_rows: Vec<ProcRow> = snap
-        .processes
-        .iter()
-        .take(18)
-        .enumerate()
-        .map(|(i, p)| {
-            let mut r = to_proc_row(p, None);
-            if p.name.contains("spectacle") || p.name.contains("wine") && i == 5 {
-                r.highlight_kind = 2;
-            } else if p.cpu_pct >= 0.05 && (3..=11).contains(&i) {
-                r.highlight_kind = 1;
-            }
-            r
-        })
-        .collect();
-    w.set_top_processes(ModelRc::new(VecModel::from(top_rows)));
+    // Summary Card 3: live TOP 18 CPU PROCESSES, or activity in the selected history range
+    sync_history_selection(w, c);
 
     // Summary Middle Row: Memory Utilization
     let mem_ratio = (snap.memory.used_pct / 100.0).clamp(0.0, 1.0);
@@ -4625,11 +5194,11 @@ fn sync_all_models(w: &MainWindow, c: &GuiController) {
 
     sync_disk_space_models(w, c);
 
-    if let Some(ref info) = c.sampler.system_info {
+    if let Some(ref info) = c.sampler().system_info {
         w.set_sysinfo_text(SharedString::from(format_system_info_report(info)));
     }
 
-    let f_len = c.sampler.flight_recorder.trace.samples.len() as i32;
+    let f_len = c.sampler().flight_recorder.trace.samples.len() as i32;
     let prev_count = w.get_flight_frame_count();
     let cur_scrub = w.get_flight_scrub_index();
     w.set_flight_frame_count(f_len);
@@ -5557,7 +6126,7 @@ fn sync_filtered_views(w: &MainWindow, c: &GuiController) {
     // 3. Drivers
     let d_query = w.get_drv_filter().to_lowercase();
     let d_rows: Vec<DriverRow> = c
-        .sampler
+        .sampler()
         .drivers
         .iter()
         .filter(|m| {
@@ -5586,7 +6155,7 @@ fn sync_filtered_views(w: &MainWindow, c: &GuiController) {
     w.set_drv_summary(SharedString::from(format!(
         "Showing {} / {} loaded drivers",
         d_rows.len(),
-        c.sampler.drivers.len()
+        c.sampler().drivers.len()
     )));
     w.set_drivers(ModelRc::new(VecModel::from(d_rows)));
 
@@ -5596,7 +6165,7 @@ fn sync_filtered_views(w: &MainWindow, c: &GuiController) {
     let mut cat_rows = Vec::new();
     match tab {
         4 => {
-            for st in &c.sampler.startup_apps {
+            for st in &c.sampler().startup_apps {
                 if !cat_query.is_empty()
                     && !st.name.to_lowercase().contains(&cat_query)
                     && !st.exec.to_lowercase().contains(&cat_query)
@@ -5614,7 +6183,7 @@ fn sync_filtered_views(w: &MainWindow, c: &GuiController) {
             }
         }
         5 => {
-            for u in &c.sampler.users {
+            for u in &c.sampler().users {
                 cat_rows.push(CatalogRow {
                     col1: SharedString::from(u.username.as_str()),
                     col2: SharedString::from(format!("UID {}", u.uid)),
@@ -5633,7 +6202,7 @@ fn sync_filtered_views(w: &MainWindow, c: &GuiController) {
             }
         }
         6 => {
-            for s in &c.sampler.services {
+            for s in &c.sampler().services {
                 if !cat_query.is_empty()
                     && !s.unit.to_lowercase().contains(&cat_query)
                     && !s.description.to_lowercase().contains(&cat_query)
@@ -5654,7 +6223,7 @@ fn sync_filtered_views(w: &MainWindow, c: &GuiController) {
             }
         }
         _ => {
-            for app in &c.sampler.installed_apps {
+            for app in &c.sampler().installed_apps {
                 if !cat_query.is_empty()
                     && !app.name.to_lowercase().contains(&cat_query)
                     && !app.description.to_lowercase().contains(&cat_query)
@@ -5679,7 +6248,8 @@ fn sync_filtered_views(w: &MainWindow, c: &GuiController) {
 }
 
 fn sync_disk_space_models(w: &MainWindow, c: &GuiController) {
-    let ds = &c.sampler.disk_space;
+    let smp = c.sampler();
+    let ds = &smp.disk_space;
     w.set_disk_scan_summary(SharedString::from(format!(
         "Root: {} | Used: {} / {} | Scanned {} ({} files in {} ms)",
         ds.root_path,
@@ -5724,7 +6294,9 @@ fn sync_disk_space_models(w: &MainWindow, c: &GuiController) {
 }
 
 fn sync_flight_view(w: &MainWindow, c: &GuiController) {
-    let samples = &c.sampler.flight_recorder.trace.samples;
+    let smp = c.sampler();
+    let trace = &smp.flight_recorder.trace;
+    let samples = &trace.samples;
     if samples.is_empty() {
         return;
     }
@@ -5739,8 +6311,8 @@ fn sync_flight_view(w: &MainWindow, c: &GuiController) {
         s.index,
         samples.len(),
         s.timestamp_epoch_ms,
-        c.sampler.flight_recorder.trace.schema,
-        c.sampler.flight_recorder.trace.version,
+        trace.schema,
+        trace.version,
         s.cpu_total_pct,
         s.cpu_avg_freq_mhz,
         s.cpu_temp_c,
@@ -5869,6 +6441,10 @@ fn apply_settings_to_window(w: &MainWindow, s: &AppSettings) {
     w.set_custom_refresh_ms(s.refresh_ms as i32);
     w.set_custom_compact_rows(s.compact_rows);
     w.set_custom_show_grid(s.show_graph_grid);
+    w.set_chart_fps(s.chart_fps as i32);
+    if s.chart_fps == 0 {
+        w.global::<ChartClock>().set_phase(1.0);
+    }
 }
 
 // ============================================================================
@@ -6125,6 +6701,81 @@ fn render_3series_cpu_overview_graph(
     Image::from_rgba8(buf)
 }
 
+fn sync_history_selection(w: &MainWindow, c: &GuiController) {
+    let Some((lo, hi)) = c.selection else {
+        w.set_sum_sel_active(false);
+        w.set_sum_top_procs_banner(SharedString::from("TOP 18 CPU PROCESSES"));
+        w.set_sum_top_procs_banner_right(SharedString::new());
+        w.set_sum_cpu_hint(SharedString::from("Drag on the chart to inspect a past time range"));
+        let top_rows: Vec<ProcRow> = c
+            .last_snap
+            .processes
+            .iter()
+            .take(18)
+            .enumerate()
+            .map(|(i, p)| {
+                let mut r = to_proc_row(p, None);
+                if p.name.contains("spectacle") || p.name.contains("wine") && i == 5 {
+                    r.highlight_kind = 2;
+                } else if p.cpu_pct >= 0.05 && (3..=11).contains(&i) {
+                    r.highlight_kind = 1;
+                }
+                r
+            })
+            .collect();
+        w.set_top_processes(ModelRc::new(VecModel::from(top_rows)));
+        return;
+    };
+
+    // Fractions may fall outside 0..1 when the range is older than the zoom
+    // window; the chart clips the band and hides off-screen edges.
+    let last = (c.history_window - 1) as f32;
+    w.set_sum_sel_active(true);
+    w.set_sum_sel_a(c.window_index_of(lo) as f32 / last);
+    w.set_sum_sel_b(c.window_index_of(hi) as f32 / last);
+
+    let (rows, frames, avg_cpu) = c.history_range_rows(lo, hi);
+    let t0 = c.frame_time_ms(lo).map(format_local_hms).unwrap_or_default();
+    let t1 = c.frame_time_ms(hi).map(format_local_hms).unwrap_or_default();
+    let span = c.frame_time_ms(hi).zip(c.frame_time_ms(lo)).map_or(0, |(b, a)| (b - a) / 1000);
+    w.set_sum_top_procs_banner(SharedString::from("HISTORY"));
+    w.set_sum_top_procs_banner_right(SharedString::from(format!("{t0}-{t1}")));
+    w.set_sum_sel_summary(SharedString::from(format!(
+        "{} samples · avg CPU {:.1}%",
+        frames, avg_cpu
+    )));
+    w.set_sum_cpu_hint(SharedString::from(format!(
+        "Selected {t0} – {t1} ({}) · click the chart to clear",
+        format_span_secs(span)
+    )));
+    w.set_top_processes(ModelRc::new(VecModel::from(rows)));
+}
+
+/// "45s", "3m 20s", "10 min" style durations.
+fn format_span_secs(secs: u64) -> String {
+    match secs {
+        0..=99 => format!("{secs}s"),
+        _ if secs.is_multiple_of(60) => format!("{} min", secs / 60),
+        _ => format!("{}m {:02}s", secs / 60, secs % 60),
+    }
+}
+
+/// Formats a Unix epoch (ms) as local wall-clock time "HH:MM:SS".
+fn format_local_hms(epoch_ms: u64) -> String {
+    let secs = (epoch_ms / 1000) as i64;
+    #[cfg(unix)]
+    {
+        let t: libc::time_t = secs as libc::time_t;
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        // SAFETY: both pointers are valid for the duration of the call.
+        if !unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
+            return format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec);
+        }
+    }
+    let day = secs.rem_euclid(86_400);
+    format!("{:02}:{:02}:{:02}", day / 3600, (day % 3600) / 60, day % 60)
+}
+
 /// Generates SVG path commands for a series mapped to a 1000x1000 viewport.
 /// Returns (svg_path_commands, calculated_max_value).
 fn generate_svg_stroke_path(data: &VecDeque<f64>, max_val: f64) -> (String, f64) {
@@ -6294,6 +6945,49 @@ fn draw_series_curve(
 
 
 /// Renders the glowing cyan ECG pulse + `PULSEDECK` logo for the bottom-left sidebar.
+/// Renders a strip of unlit 5x7 dot-matrix character cells for the VFD/LCD
+/// banners, at 2x so it stays crisp on HiDPI screens. The cell pitch matches
+/// the banner font's advance (DejaVu Sans Mono 15px + 1.5px letter spacing).
+fn render_lcd_ghost_cells() -> Image {
+    const SCALE: f32 = 2.0;
+    const PITCH: f32 = 10.5308; // logical px per character
+    const CELL_W: f32 = 9.0; // glyph advance without letter spacing
+    const CELL_H: f32 = 17.0;
+    const CELLS: u32 = 200;
+    let w = (CELLS as f32 * PITCH * SCALE).ceil() as u32;
+    let h = (CELL_H * SCALE) as u32;
+    let mut buf = SharedPixelBuffer::<Rgba8Pixel>::new(w, h);
+    let stride = w as usize;
+    let px = buf.make_mut_slice();
+
+    let (cols, rows) = (5usize, 7usize);
+    let dot_w = CELL_W * SCALE / cols as f32;
+    let dot_h = CELL_H * SCALE / rows as f32;
+    for cell in 0..CELLS {
+        let x0 = cell as f32 * PITCH * SCALE;
+        // Faint cell backing so each character slot reads as one LCD segment.
+        for y in 0..h as usize {
+            for x in (x0.round() as usize)..((x0 + CELL_W * SCALE).round() as usize).min(stride) {
+                px[y * stride + x] = Rgba8Pixel { r: 54, g: 232, b: 255, a: 16 };
+            }
+        }
+        for r in 0..rows {
+            for c in 0..cols {
+                let dx0 = (x0 + c as f32 * dot_w + dot_w * 0.18).round() as usize;
+                let dx1 = (x0 + (c + 1) as f32 * dot_w - dot_w * 0.18).round() as usize;
+                let dy0 = (r as f32 * dot_h + dot_h * 0.16).round() as usize;
+                let dy1 = ((r + 1) as f32 * dot_h - dot_h * 0.16).round() as usize;
+                for y in dy0..dy1.min(h as usize) {
+                    for x in dx0..dx1.min(stride) {
+                        px[y * stride + x] = Rgba8Pixel { r: 54, g: 232, b: 255, a: 44 };
+                    }
+                }
+            }
+        }
+    }
+    Image::from_rgba8(buf)
+}
+
 fn render_sidebar_logo() -> Image {
     let w: u32 = 176;
     let h: u32 = 48;
@@ -6395,5 +7089,77 @@ fn draw_scaled_text(
             }
         }
         cur_x += 6 * scale;
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use crate::model::ProcessEntry;
+
+    /// Pushes a synthetic sample where `burner` (PID 999_999) uses `cpu` percent.
+    fn push_sample(c: &mut GuiController, template: &ProcessEntry, cpu: f64) {
+        let mut snap = c.last_snap.clone();
+        snap.seq += 1;
+        snap.timestamp_epoch_ms += 1000;
+        let mut p = template.clone();
+        p.pid = 999_999;
+        p.name = String::from("burner");
+        p.cpu_pct = cpu;
+        p.mem_rss_bytes = 64 << 20;
+        snap.processes = if cpu > 0.0 { vec![p] } else { Vec::new() };
+        c.apply_snapshot(snap);
+    }
+
+    #[test]
+    fn selected_range_reports_process_activity() {
+        let mut c = GuiController::new(AppSettings::default());
+        let t = c.last_snap.processes[0].clone();
+        for i in 0..40 {
+            push_sample(&mut c, &t, if (20..30).contains(&i) { 80.0 } else { 0.0 });
+        }
+        let latest = c.last_snap.seq;
+        let busy_lo = latest - 19; // i = 20
+        let busy_hi = latest - 10; // i = 29
+
+        // Map those samples to screen fractions the way the chart draws them
+        // (phase 1 = static chart), then select them back.
+        for window in HISTORY_WINDOWS {
+            c.history_window = window;
+            let n = window as f64;
+            let frac = |seq: u64| ((c.window_index_of(seq) - 1.0) / (n - 2.0)) as f32;
+            c.select_history_range(frac(busy_lo), frac(busy_hi), 1.0);
+            assert_eq!(c.selection, Some((busy_lo, busy_hi)), "zoom window {window}");
+        }
+
+        let (rows, frames, _) = c.history_range_rows(busy_lo, busy_hi);
+        assert_eq!(frames, 10);
+        assert_eq!(rows[0].name.as_str(), "burner");
+        assert_eq!(rows[0].cpu_str.as_str(), "80.0%");
+        assert_eq!(rows[0].gpu_str.as_str(), "80%"); // peak column
+
+        // A range outside the busy window must not report the process.
+        let (rows, _, _) = c.history_range_rows(latest - 5, latest);
+        assert!(rows.iter().all(|r| r.name.as_str() != "burner"));
+    }
+
+    #[test]
+    fn selection_expires_when_scrolled_out() {
+        let mut c = GuiController::new(AppSettings::default());
+        let t = c.last_snap.processes[0].clone();
+        push_sample(&mut c, &t, 50.0);
+        let seq = c.last_snap.seq;
+        c.selection = Some((seq, seq));
+        for _ in 0..LONG_HISTORY_LEN {
+            push_sample(&mut c, &t, 0.0);
+        }
+        assert_eq!(c.selection, None);
+    }
+
+    #[test]
+    fn span_formatting() {
+        assert_eq!(format_span_secs(45), "45s");
+        assert_eq!(format_span_secs(600), "10 min");
+        assert_eq!(format_span_secs(200), "3m 20s");
     }
 }

@@ -8,7 +8,7 @@
 # clean-chroot builds lack; CI runs it on a real runner instead.
 
 pkgname=pulsedeck
-pkgver=1.1.0
+pkgver=1.2.0
 pkgrel=1
 pkgdesc='Native hardware telemetry and system observatory (Slint GUI + TUI)'
 arch=('x86_64' 'aarch64')
